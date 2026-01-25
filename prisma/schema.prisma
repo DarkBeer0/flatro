@@ -1,0 +1,201 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============== ПОЛЬЗОВАТЕЛИ ==============
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String?
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связи
+  properties Property[]
+  tenants    Tenant[]
+  payments   Payment[]
+
+  @@map("users")
+}
+
+// ============== НЕДВИЖИМОСТЬ ==============
+
+model Property {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String   // "Квартира на Марszałkowskiej"
+  address     String
+  city        String
+  postalCode  String?
+  area        Float?   // Площадь в м²
+  rooms       Int?     // Количество комнат
+  floor       Int?
+  description String?
+  status      PropertyStatus @default(VACANT)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenants     Tenant[]
+  meters      Meter[]
+  contracts   Contract[]
+
+  @@map("properties")
+}
+
+enum PropertyStatus {
+  VACANT    // Свободна
+  OCCUPIED  // Занята
+  RESERVED  // Зарезервирована
+}
+
+// ============== ЖИЛЬЦЫ ==============
+
+model Tenant {
+  id          String   @id @default(uuid())
+  userId      String   // Владелец, который добавил жильца
+  propertyId  String?  // К какой квартире привязан
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  pesel       String?  // Опционально
+  moveInDate  DateTime?
+  moveOutDate DateTime?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  property    Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  payments    Payment[]
+  contracts   Contract[]
+  meterReadings MeterReading[]
+
+  @@map("tenants")
+}
+
+// ============== ДОГОВОРЫ ==============
+
+model Contract {
+  id            String   @id @default(uuid())
+  propertyId    String
+  tenantId      String
+  type          ContractType @default(STANDARD)
+  startDate     DateTime
+  endDate       DateTime?
+  rentAmount    Float    // Czynsz в PLN
+  depositAmount Float?   // Kaucja
+  paymentDay    Int      @default(10) // День месяца для оплаты
+  status        ContractStatus @default(ACTIVE)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Связи
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("contracts")
+}
+
+enum ContractType {
+  STANDARD      // Zwykły najem
+  OCCASIONAL    // Najem okazjonalny
+  INSTITUTIONAL // Najem instytucjonalny
+}
+
+enum ContractStatus {
+  DRAFT    // Черновик
+  ACTIVE   // Активный
+  EXPIRED  // Истёк
+  TERMINATED // Расторгнут
+}
+
+// ============== ПЛАТЕЖИ ==============
+
+model Payment {
+  id          String   @id @default(uuid())
+  userId      String
+  tenantId    String
+  amount      Float
+  type        PaymentType
+  status      PaymentStatus @default(PENDING)
+  dueDate     DateTime      // Срок оплаты
+  paidDate    DateTime?     // Когда оплачено
+  period      String?       // "2026-01" - за какой месяц
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+enum PaymentType {
+  RENT      // Czynsz
+  UTILITIES // Media
+  DEPOSIT   // Kaucja
+  OTHER     // Inne
+}
+
+enum PaymentStatus {
+  PENDING   // Ожидает
+  PAID      // Оплачено
+  OVERDUE   // Просрочено
+  CANCELLED // Отменено
+}
+
+// ============== СЧЁТЧИКИ (MEDIA) ==============
+
+model Meter {
+  id          String    @id @default(uuid())
+  propertyId  String
+  type        MeterType
+  meterNumber String?   // Номер счётчика
+  unit        String    // kWh, m³, GJ
+  pricePerUnit Float?   // Тариф за единицу
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Связи
+  property Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  readings MeterReading[]
+
+  @@map("meters")
+}
+
+enum MeterType {
+  ELECTRICITY // Prąd
+  GAS         // Gaz
+  WATER_COLD  // Zimna woda
+  WATER_HOT   // Ciepła woda
+  HEATING     // Ogrzewanie
+}
+
+model MeterReading {
+  id        String   @id @default(uuid())
+  meterId   String
+  tenantId  String?  // Кто внёс показания
+  value     Float    // Показание
+  readingDate DateTime
+  photoUrl  String?  // Фото счётчика
+  createdAt DateTime @default(now())
+
+  // Связи
+  meter  Meter   @relation(fields: [meterId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@map("meter_readings")
+}
