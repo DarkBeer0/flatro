@@ -1,294 +1,349 @@
+// app/(dashboard)/properties/[id]/page.tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
-  ArrowLeft, 
-  Edit, 
-  Trash2, 
-  Home, 
-  MapPin, 
-  Users, 
-  CreditCard,
-  FileText,
-  Gauge,
-  Calendar,
-  Phone,
-  Mail
+  ArrowLeft, Home, MapPin, Loader2, Users, FileText, 
+  CreditCard, Edit, Trash2, SquareStack
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { InviteTenant } from '@/components/invite-tenant'
+import { useLocale } from '@/lib/i18n/context'
 
-// Временные данные
-const mockProperty = {
-  id: '1',
-  name: 'Mieszkanie Mokotow',
-  address: 'ul. Pulawska 123/45',
-  city: 'Warszawa',
-  postalCode: '02-595',
-  area: 52,
-  rooms: 2,
-  floor: 4,
-  description: 'Jasne, przestronne mieszkanie z balkonem. Kuchnia z oknem, lazienka z wanna. Piwnica w cenie.',
-  status: 'OCCUPIED' as const,
-  rentAmount: 3500,
-  createdAt: '2024-01-15',
+interface Property {
+  id: string
+  name: string
+  address: string
+  city: string
+  postalCode: string | null
+  area: number | null
+  rooms: number | null
+  floor: number | null
+  description: string | null
+  status: 'VACANT' | 'OCCUPIED' | 'RESERVED'
+  tenants: {
+    id: string
+    firstName: string
+    lastName: string
+    email: string | null
+    phone: string | null
+    isActive: boolean
+  }[]
+  contracts: {
+    id: string
+    type: string
+    status: string
+    startDate: string
+    endDate: string | null
+    rentAmount: number
+  }[]
+  meters: {
+    id: string
+    type: string
+    meterNumber: string | null
+  }[]
 }
 
-const mockTenant = {
-  id: '1',
-  firstName: 'Jan',
-  lastName: 'Kowalski',
-  email: 'jan.kowalski@email.com',
-  phone: '+48 123 456 789',
-  moveInDate: '2024-02-01',
+interface Invitation {
+  id: string
+  code: string
+  email: string | null
+  expiresAt: string
+  usedAt: string | null
 }
 
-const mockPayments = [
-  { id: '1', period: '2024-03', amount: 3500, status: 'PAID', paidDate: '2024-03-05' },
-  { id: '2', period: '2024-02', amount: 3500, status: 'PAID', paidDate: '2024-02-08' },
-  { id: '3', period: '2024-01', amount: 3500, status: 'PAID', paidDate: '2024-01-10' },
-]
+export default function PropertyDetailPage() {
+  const params = useParams()
+  const router = useRouter()
+  const { t } = useLocale()
+  const propertyId = params.id as string
 
-const statusConfig = {
-  VACANT: { label: 'Wolne', color: 'bg-green-100 text-green-800' },
-  OCCUPIED: { label: 'Wynajete', color: 'bg-blue-100 text-blue-800' },
-  RESERVED: { label: 'Zarezerwowane', color: 'bg-yellow-100 text-yellow-800' },
-}
+  const [property, setProperty] = useState<Property | null>(null)
+  const [invitations, setInvitations] = useState<Invitation[]>([])
+  const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
 
-export default function PropertyDetailPage({ params }: { params: { id: string } }) {
-  const property = mockProperty
-  const tenant = mockTenant
-  const payments = mockPayments
+  useEffect(() => {
+    fetchData()
+  }, [propertyId])
+
+  async function fetchData() {
+    try {
+      const [propertyRes, invitationsRes] = await Promise.all([
+        fetch(`/api/properties/${propertyId}`),
+        fetch(`/api/invitations?propertyId=${propertyId}`)
+      ])
+
+      if (propertyRes.ok) {
+        const data = await propertyRes.json()
+        setProperty(data)
+      } else {
+        router.push('/properties')
+      }
+
+      if (invitationsRes.ok) {
+        const data = await invitationsRes.json()
+        setInvitations(data)
+      }
+    } catch (error) {
+      console.error('Error fetching property:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm('Вы уверены что хотите удалить эту недвижимость? Все связанные данные будут удалены.')) {
+      return
+    }
+
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/properties/${propertyId}`, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        router.push('/properties')
+      }
+    } catch (error) {
+      console.error('Error deleting property:', error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const statusConfig = {
+    VACANT: { label: t.properties.status.vacant, color: 'bg-green-100 text-green-800' },
+    OCCUPIED: { label: t.properties.status.occupied, color: 'bg-blue-100 text-blue-800' },
+    RESERVED: { label: t.properties.status.reserved, color: 'bg-yellow-100 text-yellow-800' },
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  if (!property) {
+    return (
+      <div className="text-center py-12">
+        <Home className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Недвижимость не найдена</h2>
+        <Link href="/properties">
+          <Button variant="outline">Вернуться к списку</Button>
+        </Link>
+      </div>
+    )
+  }
+
   const status = statusConfig[property.status]
+  const activeTenants = property.tenants.filter(t => t.isActive)
+  const activeContract = property.contracts.find(c => c.status === 'ACTIVE')
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <Link 
-          href="/properties" 
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Powrot do listy
+      <div className="flex items-center gap-4 mb-6">
+        <Link href="/properties">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            {t.common.back}
+          </Button>
         </Link>
+      </div>
 
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-gray-900">{property.name}</h1>
-              <Badge className={status.color}>{status.label}</Badge>
+      {/* Property Info Card */}
+      <Card className="p-6 mb-6">
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <Home className="h-6 w-6 text-blue-600" />
             </div>
-            <div className="flex items-center text-gray-500 mt-2">
-              <MapPin className="h-4 w-4 mr-1" />
-              {property.address}, {property.postalCode} {property.city}
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h1 className="text-2xl font-bold text-gray-900">{property.name}</h1>
+                <Badge className={status.color}>{status.label}</Badge>
+              </div>
+              <p className="text-gray-600 flex items-center gap-1">
+                <MapPin className="h-4 w-4" />
+                {property.address}, {property.city}
+                {property.postalCode && `, ${property.postalCode}`}
+              </p>
             </div>
           </div>
 
           <div className="flex gap-2">
             <Link href={`/properties/${property.id}/edit`}>
-              <Button variant="outline">
+              <Button variant="outline" size="sm">
                 <Edit className="h-4 w-4 mr-2" />
-                Edytuj
+                {t.common.edit}
               </Button>
             </Link>
-            <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50">
-              <Trash2 className="h-4 w-4 mr-2" />
-              Usun
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={handleDelete}
+              disabled={deleting}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
             </Button>
           </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        {/* Main Content */}
-        <div className="xl:col-span-2 space-y-6">
-          {/* Property Details */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Home className="h-5 w-5 text-gray-400" />
-              Szczegoly nieruchomosci
-            </h2>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-              <div>
-                <p className="text-sm text-gray-500">Powierzchnia</p>
-                <p className="text-lg font-semibold">{property.area} m²</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Pokoje</p>
-                <p className="text-lg font-semibold">{property.rooms}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Pietro</p>
-                <p className="text-lg font-semibold">{property.floor}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Czynsz</p>
-                <p className="text-lg font-semibold">{property.rentAmount} zl</p>
-              </div>
+        {/* Property Details */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 pt-6 border-t">
+          {property.area && (
+            <div>
+              <p className="text-sm text-gray-500">{t.properties.area}</p>
+              <p className="font-semibold">{property.area} m²</p>
             </div>
-
-            {property.description && (
-              <div className="mt-6 pt-6 border-t">
-                <p className="text-sm text-gray-500 mb-2">Opis</p>
-                <p className="text-gray-700">{property.description}</p>
-              </div>
-            )}
-          </Card>
-
-          {/* Tenant */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Users className="h-5 w-5 text-gray-400" />
-                Najemca
-              </h2>
-              {!tenant && (
-                <Link href={`/properties/${property.id}/assign-tenant`}>
-                  <Button size="sm">Przypisz najemce</Button>
-                </Link>
-              )}
+          )}
+          {property.rooms && (
+            <div>
+              <p className="text-sm text-gray-500">{t.properties.rooms}</p>
+              <p className="font-semibold">{property.rooms}</p>
             </div>
-
-            {tenant ? (
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {tenant.firstName} {tenant.lastName}
-                  </p>
-                  <div className="mt-2 space-y-1">
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Mail className="h-4 w-4 mr-2" />
-                      {tenant.email}
-                    </div>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Phone className="h-4 w-4 mr-2" />
-                      {tenant.phone}
-                    </div>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      Od {tenant.moveInDate}
-                    </div>
-                  </div>
-                </div>
-                <Link href={`/tenants/${tenant.id}`}>
-                  <Button variant="outline" size="sm">Zobacz profil</Button>
-                </Link>
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <Users className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-                <p>Brak przypisanego najemcy</p>
-              </div>
-            )}
-          </Card>
-
-          {/* Recent Payments */}
-          <Card className="p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-gray-400" />
-                Ostatnie platnosci
-              </h2>
-              <Link href={`/payments?property=${property.id}`}>
-                <Button variant="outline" size="sm">Zobacz wszystkie</Button>
-              </Link>
+          )}
+          {property.floor !== null && (
+            <div>
+              <p className="text-sm text-gray-500">{t.properties.floor}</p>
+              <p className="font-semibold">{property.floor}</p>
             </div>
+          )}
+          {activeContract && (
+            <div>
+              <p className="text-sm text-gray-500">Аренда</p>
+              <p className="font-semibold">{activeContract.rentAmount} {t.common.currency}/мес</p>
+            </div>
+          )}
+        </div>
 
+        {property.description && (
+          <div className="mt-4 pt-4 border-t">
+            <p className="text-sm text-gray-500 mb-1">Описание</p>
+            <p className="text-gray-700">{property.description}</p>
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Tenants */}
+        <Card className="p-4 lg:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Users className="h-5 w-5 text-green-600" />
+              {t.tenants.title}
+            </h3>
+            <Link href={`/tenants/new?propertyId=${property.id}`}>
+              <Button size="sm" variant="outline">+ Добавить</Button>
+            </Link>
+          </div>
+
+          {activeTenants.length > 0 ? (
             <div className="space-y-3">
-              {payments.map((payment) => (
-                <div 
-                  key={payment.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">{payment.period}</p>
-                    <p className="text-sm text-gray-500">
-                      Zaplacono {payment.paidDate}
-                    </p>
+              {activeTenants.map((tenant) => (
+                <div key={tenant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                      <span className="text-green-600 font-medium">
+                        {tenant.firstName[0]}{tenant.lastName[0]}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-medium">{tenant.firstName} {tenant.lastName}</p>
+                      {tenant.email && <p className="text-sm text-gray-500">{tenant.email}</p>}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-semibold">{payment.amount} zl</p>
-                    <Badge className="bg-green-100 text-green-800">Zaplacono</Badge>
-                  </div>
+                  <Link href={`/tenants/${tenant.id}`}>
+                    <Button size="sm" variant="ghost">{t.common.details}</Button>
+                  </Link>
                 </div>
               ))}
             </div>
-          </Card>
-        </div>
+          ) : (
+            <p className="text-gray-500 text-sm">{t.properties.noTenant}</p>
+          )}
+        </Card>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Quick Actions */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Szybkie akcje</h2>
-            <div className="space-y-2">
-              <Link href={`/payments/new?property=${property.id}`} className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Dodaj platnosc
-                </Button>
-              </Link>
-              <Link href={`/contracts/new?property=${property.id}`} className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  <FileText className="h-4 w-4 mr-2" />
-                  Utworz umowe
-                </Button>
-              </Link>
-              <Link href={`/meters?property=${property.id}`} className="block">
-                <Button variant="outline" className="w-full justify-start">
-                  <Gauge className="h-4 w-4 mr-2" />
-                  Odczyty licznikow
-                </Button>
-              </Link>
-            </div>
-          </Card>
+        {/* Invite Tenant */}
+        <InviteTenant
+          propertyId={property.id}
+          propertyName={property.name}
+          invitations={invitations}
+          onInvitationCreated={fetchData}
+        />
 
-          {/* Financial Summary */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Podsumowanie finansowe</h2>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-gray-500">Czynsz miesieczny</span>
-                <span className="font-semibold">{property.rentAmount} zl</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Przychod roczny</span>
-                <span className="font-semibold">{property.rentAmount * 12} zl</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Cena za m²</span>
-                <span className="font-semibold">
-                  {Math.round(property.rentAmount / property.area)} zl
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Meters */}
-          <Card className="p-6">
-            <h2 className="text-lg font-semibold mb-4">Liczniki</h2>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Prad</span>
-                <span className="text-sm text-gray-500">Brak odczytu</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Gaz</span>
-                <span className="text-sm text-gray-500">Brak odczytu</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600">Woda</span>
-                <span className="text-sm text-gray-500">Brak odczytu</span>
-              </div>
-            </div>
-            <Link href={`/meters/new?property=${property.id}`} className="block mt-4">
-              <Button variant="outline" size="sm" className="w-full">
-                Dodaj odczyt
-              </Button>
+        {/* Contracts */}
+        <Card className="p-4 lg:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <FileText className="h-5 w-5 text-purple-600" />
+              {t.contracts.title}
+            </h3>
+            <Link href={`/contracts/new?propertyId=${property.id}`}>
+              <Button size="sm" variant="outline">+ Добавить</Button>
             </Link>
-          </Card>
-        </div>
+          </div>
+
+          {property.contracts.length > 0 ? (
+            <div className="space-y-3">
+              {property.contracts.map((contract) => (
+                <div key={contract.id} className="p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center justify-between mb-1">
+                    <Badge variant="outline">{contract.type}</Badge>
+                    <Badge className={contract.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
+                      {contract.status}
+                    </Badge>
+                  </div>
+                  <p className="font-medium">{contract.rentAmount} {t.common.currency}/мес</p>
+                  <p className="text-sm text-gray-500">
+                    {new Date(contract.startDate).toLocaleDateString()} — {contract.endDate ? new Date(contract.endDate).toLocaleDateString() : 'бессрочно'}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Нет договоров</p>
+          )}
+        </Card>
+
+        {/* Meters */}
+        <Card className="p-4 lg:p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold flex items-center gap-2">
+              <SquareStack className="h-5 w-5 text-yellow-600" />
+              Счётчики
+            </h3>
+            <Button size="sm" variant="outline">+ Добавить</Button>
+          </div>
+
+          {property.meters.length > 0 ? (
+            <div className="space-y-2">
+              {property.meters.map((meter) => (
+                <div key={meter.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div>
+                    <p className="font-medium">{meter.type}</p>
+                    {meter.meterNumber && <p className="text-sm text-gray-500">№ {meter.meterNumber}</p>}
+                  </div>
+                  <Button size="sm" variant="ghost">Показания</Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-500 text-sm">Нет счётчиков</p>
+          )}
+        </Card>
       </div>
     </div>
   )

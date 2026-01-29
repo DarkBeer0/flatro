@@ -1,15 +1,14 @@
-// app/(dashboard)/layout.tsx
+// app/(tenant)/layout.tsx
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Users, Building2, CreditCard, FileText, Settings, Gauge, Menu, X, LogOut, Loader2 } from 'lucide-react'
+import { Home, CreditCard, MessageSquare, AlertTriangle, Settings, Building2, Menu, X, LogOut, Loader2 } from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
-import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const pathname = usePathname()
@@ -17,15 +16,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { t } = useLocale()
 
   const navItems = [
-    { href: '/dashboard', icon: Gauge, label: t.nav.dashboard },
-    { href: '/properties', icon: Home, label: t.nav.properties },
-    { href: '/tenants', icon: Users, label: t.nav.tenants },
-    { href: '/payments', icon: CreditCard, label: t.nav.payments },
-    { href: '/contracts', icon: FileText, label: t.nav.contracts },
+    { href: '/tenant/dashboard', icon: Home, label: 'Главная' },
+    { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
+    { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },
+    { href: '/tenant/tickets', icon: AlertTriangle, label: 'Заявки' },
   ]
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') return pathname === '/dashboard'
     return pathname.startsWith(href)
   }
 
@@ -42,8 +39,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
         <div className="flex items-center justify-between h-16 px-4">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <Building2 className="h-8 w-8 text-blue-600" />
+          <Link href="/tenant/dashboard" className="flex items-center gap-2">
+            <Building2 className="h-8 w-8 text-green-600" />
             <span className="text-xl font-bold text-gray-900">Flatro</span>
           </Link>
           <button onClick={() => setSidebarOpen(true)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -65,9 +62,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex h-16 items-center justify-between border-b px-4 lg:px-6">
-          <Link href="/dashboard" className="flex items-center gap-2">
-            <Building2 className="h-8 w-8 text-blue-600" />
-            <span className="text-xl font-bold text-gray-900">Flatro</span>
+          <Link href="/tenant/dashboard" className="flex items-center gap-2">
+            <Building2 className="h-8 w-8 text-green-600" />
+            <div>
+              <span className="text-xl font-bold text-gray-900">Flatro</span>
+              <span className="text-xs text-green-600 block -mt-1">Кабинет жильца</span>
+            </div>
           </Link>
           <button onClick={() => setSidebarOpen(false)} className="lg:hidden p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
             <X className="h-5 w-5" />
@@ -85,10 +85,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   href={item.href}
                   onClick={() => setSidebarOpen(false)}
                   className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                    active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                    active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
+                  <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
                   <span>{item.label}</span>
                 </Link>
               )
@@ -96,22 +96,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             
             <div className="pt-4 mt-4 border-t">
               <Link
-                href="/settings"
+                href="/tenant/settings"
                 onClick={() => setSidebarOpen(false)}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                  isActive('/settings') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                  isActive('/tenant/settings') ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
                 }`}
               >
-                <Settings className={`h-5 w-5 ${isActive('/settings') ? 'text-blue-600' : ''}`} />
-                <span>{t.nav.settings}</span>
+                <Settings className={`h-5 w-5 ${isActive('/tenant/settings') ? 'text-green-600' : ''}`} />
+                <span>Настройки</span>
               </Link>
             </div>
           </div>
 
-          {/* Bottom section: Language + Logout */}
-          <div className="p-4 border-t space-y-2">
-            <LanguageSwitcher />
-            
+          {/* Logout */}
+          <div className="p-4 border-t">
             <button
               onClick={handleLogout}
               disabled={loggingOut}
@@ -122,7 +120,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               ) : (
                 <LogOut className="h-5 w-5" />
               )}
-              <span>{t.settings.logout}</span>
+              <span>Выйти</span>
             </button>
           </div>
         </nav>

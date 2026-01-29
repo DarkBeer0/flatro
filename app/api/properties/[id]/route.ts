@@ -26,6 +26,7 @@ export async function GET(
             email: true,
             phone: true,
             isActive: true,
+            tenantUserId: true,
           }
         },
         contracts: {
@@ -36,9 +37,16 @@ export async function GET(
             startDate: true,
             endDate: true,
             rentAmount: true,
+          },
+          orderBy: { createdAt: 'desc' }
+        },
+        meters: {
+          select: {
+            id: true,
+            type: true,
+            meterNumber: true,
           }
         },
-        meters: true,
       }
     })
 
@@ -90,7 +98,7 @@ export async function PUT(
         postalCode: body.postalCode || null,
         area: body.area ? parseFloat(body.area) : null,
         rooms: body.rooms ? parseInt(body.rooms) : null,
-        floor: body.floor ? parseInt(body.floor) : null,
+        floor: body.floor !== undefined && body.floor !== '' ? parseInt(body.floor) : null,
         description: body.description || null,
         status: body.status,
       }

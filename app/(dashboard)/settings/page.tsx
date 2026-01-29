@@ -1,74 +1,71 @@
+// app/(dashboard)/settings/page.tsx
 'use client'
 
 import { useState } from 'react'
-import { User, Bell, CreditCard, Shield, Building2, Save, Check } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useLocale } from '@/lib/i18n/context'
+import { locales, localeNames, Locale } from '@/lib/i18n/dictionaries'
+import { createClient } from '@/lib/supabase/client'
 
 export default function SettingsPage() {
+  const router = useRouter()
+  const { t, locale, setLocale } = useLocale()
   const [activeTab, setActiveTab] = useState('profile')
-  const [isSaving, setIsSaving] = useState(false)
-  const [showSaved, setShowSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [loggingOut, setLoggingOut] = useState(false)
 
-  const [profile, setProfile] = useState({
-    name: 'Jan Kowalski',
-    email: 'jan.kowalski@email.com',
-    phone: '+48 123 456 789',
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
     company: '',
     nip: '',
   })
 
-  const [notifications, setNotifications] = useState({
-    emailPaymentReminder: true,
-    emailPaymentOverdue: true,
-    emailContractExpiry: true,
-    emailNewMessage: false,
-    pushPaymentReminder: true,
-    pushPaymentOverdue: true,
-  })
-
-  const [billing, setBilling] = useState({
-    plan: 'starter',
-    propertiesCount: 2,
-    propertiesLimit: 3,
-  })
-
-  const handleProfileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target
-    setProfile(prev => ({ ...prev, [name]: value }))
-  }
-
-  const handleNotificationChange = (key: string) => {
-    setNotifications(prev => ({ ...prev, [key]: !prev[key as keyof typeof prev] }))
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value })
+    setSaved(false)
   }
 
   const handleSave = async () => {
-    setIsSaving(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setIsSaving(false)
-    setShowSaved(true)
-    setTimeout(() => setShowSaved(false), 3000)
+    setSaving(true)
+    // TODO: Save to API
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setSaving(false)
+    setSaved(true)
+  }
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push('/login')
+    router.refresh()
   }
 
   const tabs = [
-    { id: 'profile', label: 'Profil', icon: User },
-    { id: 'notifications', label: 'Powiadomienia', icon: Bell },
-    { id: 'billing', label: 'Subskrypcja', icon: CreditCard },
-    { id: 'security', label: 'Bezpieczenstwo', icon: Shield },
+    { id: 'profile', label: t.settings.profile, icon: User },
+    { id: 'language', label: t.settings.language, icon: Globe },
+    { id: 'notifications', label: t.settings.notifications, icon: Bell },
+    { id: 'security', label: t.settings.security, icon: Shield },
   ]
 
   return (
-    <div className="w-full">
+    <div className="w-full max-w-4xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Ustawienia</h1>
-        <p className="text-gray-500 mt-1">Zarzadzaj swoim kontem i preferencjami</p>
+      <div className="mb-6">
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.settings.title}</h1>
+        <p className="text-gray-500 mt-1">{t.settings.subtitle}</p>
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        {/* Sidebar */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Sidebar Navigation */}
         <div className="lg:w-64 flex-shrink-0">
           <Card className="p-2">
             <nav className="space-y-1">
@@ -78,17 +75,33 @@ export default function SettingsPage() {
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                       activeTab === tab.id
-                        ? 'bg-blue-50 text-blue-700'
+                        ? 'bg-blue-50 text-blue-700 font-medium'
                         : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    <Icon className="h-5 w-5" />
+                    <Icon className={`h-5 w-5 ${activeTab === tab.id ? 'text-blue-600' : ''}`} />
                     {tab.label}
                   </button>
                 )
               })}
+              
+              {/* Logout button */}
+              <div className="pt-2 mt-2 border-t">
+                <button
+                  onClick={handleLogout}
+                  disabled={loggingOut}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  {loggingOut ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <LogOut className="h-5 w-5" />
+                  )}
+                  {t.settings.logout}
+                </button>
+              </div>
             </nav>
           </Card>
         </div>
@@ -98,92 +111,111 @@ export default function SettingsPage() {
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <User className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold">Dane profilowe</h2>
-                  <p className="text-sm text-gray-500">Zaktualizuj swoje dane osobowe</p>
-                </div>
-              </div>
+              <h2 className="text-lg font-semibold mb-1">{t.settings.profileData}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings.profileDataDesc}</p>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <Label htmlFor="name">Imie i nazwisko</Label>
-                  <Input
-                    id="name"
-                    name="name"
-                    value={profile.name}
-                    onChange={handleProfileChange}
-                    className="mt-1"
-                  />
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="name">{t.settings.name}</Label>
+                    <Input
+                      id="name"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      placeholder="Иван Петров"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="email">{t.settings.email}</Label>
+                    <Input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="ivan@example.com"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="phone">{t.settings.phone}</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="+48 123 456 789"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="company">{t.settings.company}</Label>
+                    <Input
+                      id="company"
+                      name="company"
+                      value={formData.company}
+                      onChange={handleChange}
+                      placeholder={t.settings.companyPlaceholder}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="nip">{t.settings.nip}</Label>
+                    <Input
+                      id="nip"
+                      name="nip"
+                      value={formData.nip}
+                      onChange={handleChange}
+                      placeholder="1234567890"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={profile.email}
-                    onChange={handleProfileChange}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="phone">Telefon</Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    value={profile.phone}
-                    onChange={handleProfileChange}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="company">Nazwa firmy (opcjonalnie)</Label>
-                  <Input
-                    id="company"
-                    name="company"
-                    value={profile.company}
-                    onChange={handleProfileChange}
-                    placeholder="Dla faktur"
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="nip">NIP (opcjonalnie)</Label>
-                  <Input
-                    id="nip"
-                    name="nip"
-                    value={profile.nip}
-                    onChange={handleProfileChange}
-                    placeholder="1234567890"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              <div className="mt-6 pt-6 border-t flex justify-end">
-                <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? (
-                    'Zapisywanie...'
-                  ) : showSaved ? (
-                    <>
-                      <Check className="h-4 w-4 mr-2" />
-                      Zapisano
-                    </>
-                  ) : (
-                    <>
-                      <Save className="h-4 w-4 mr-2" />
-                      Zapisz zmiany
-                    </>
+                <div className="flex items-center gap-3 pt-4">
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {t.common.loading}
+                      </>
+                    ) : (
+                      t.settings.saveChanges
+                    )}
+                  </Button>
+                  {saved && (
+                    <span className="text-green-600 text-sm flex items-center gap-1">
+                      <Check className="h-4 w-4" />
+                      {t.settings.saved}
+                    </span>
                   )}
-                </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Language Tab */}
+          {activeTab === 'language' && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-1">{t.settings.language}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings.languageDesc}</p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {locales.map((loc) => (
+                  <button
+                    key={loc}
+                    onClick={() => setLocale(loc)}
+                    className={`flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${
+                      locale === loc
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className={locale === loc ? 'font-medium text-blue-700' : 'text-gray-700'}>
+                      {localeNames[loc]}
+                    </span>
+                    {locale === loc && (
+                      <Check className="h-5 w-5 text-blue-600" />
+                    )}
+                  </button>
+                ))}
               </div>
             </Card>
           )}
@@ -191,198 +223,42 @@ export default function SettingsPage() {
           {/* Notifications Tab */}
           {activeTab === 'notifications' && (
             <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Bell className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold">Powiadomienia</h2>
-                  <p className="text-sm text-gray-500">Wybierz jakie powiadomienia chcesz otrzymywac</p>
-                </div>
-              </div>
+              <h2 className="text-lg font-semibold mb-1">{t.settings.notifications}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings.notificationsDesc}</p>
 
-              <div className="space-y-6">
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-4">Powiadomienia email</h3>
-                  <div className="space-y-4">
-                    <NotificationToggle
-                      label="Przypomnienie o platnosci"
-                      description="3 dni przed terminem platnosci"
-                      checked={notifications.emailPaymentReminder}
-                      onChange={() => handleNotificationChange('emailPaymentReminder')}
-                    />
-                    <NotificationToggle
-                      label="Zalegla platnosc"
-                      description="Gdy platnosc jest przeterminowana"
-                      checked={notifications.emailPaymentOverdue}
-                      onChange={() => handleNotificationChange('emailPaymentOverdue')}
-                    />
-                    <NotificationToggle
-                      label="Wygasajaca umowa"
-                      description="30 dni przed koncem umowy"
-                      checked={notifications.emailContractExpiry}
-                      onChange={() => handleNotificationChange('emailContractExpiry')}
-                    />
-                    <NotificationToggle
-                      label="Nowa wiadomosc"
-                      description="Gdy najemca wysle wiadomosc"
-                      checked={notifications.emailNewMessage}
-                      onChange={() => handleNotificationChange('emailNewMessage')}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-6 border-t">
-                  <h3 className="font-medium text-gray-900 mb-4">Powiadomienia push</h3>
-                  <div className="space-y-4">
-                    <NotificationToggle
-                      label="Przypomnienie o platnosci"
-                      description="Powiadomienie w przegladarce"
-                      checked={notifications.pushPaymentReminder}
-                      onChange={() => handleNotificationChange('pushPaymentReminder')}
-                    />
-                    <NotificationToggle
-                      label="Zalegla platnosc"
-                      description="Natychmiastowe powiadomienie"
-                      checked={notifications.pushPaymentOverdue}
-                      onChange={() => handleNotificationChange('pushPaymentOverdue')}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 pt-6 border-t flex justify-end">
-                <Button onClick={handleSave} disabled={isSaving}>
-                  {isSaving ? 'Zapisywanie...' : 'Zapisz preferencje'}
-                </Button>
+              <div className="space-y-4">
+                <NotificationToggle
+                  label={t.settings.emailPaymentReminders}
+                  description={t.settings.emailPaymentRemindersDesc}
+                  defaultChecked={true}
+                />
+                <NotificationToggle
+                  label={t.settings.emailContractExpiry}
+                  description={t.settings.emailContractExpiryDesc}
+                  defaultChecked={true}
+                />
+                <NotificationToggle
+                  label={t.settings.emailNewTenant}
+                  description={t.settings.emailNewTenantDesc}
+                  defaultChecked={false}
+                />
               </div>
             </Card>
-          )}
-
-          {/* Billing Tab */}
-          {activeTab === 'billing' && (
-            <div className="space-y-6">
-              <Card className="p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <CreditCard className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-semibold">Twoj plan</h2>
-                    <p className="text-sm text-gray-500">Zarzadzaj subskrypcja</p>
-                  </div>
-                </div>
-
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold text-blue-900">Plan Starter</h3>
-                      <p className="text-sm text-blue-700">
-                        {billing.propertiesCount} z {billing.propertiesLimit} nieruchomosci
-                      </p>
-                    </div>
-                    <p className="text-2xl font-bold text-blue-900">0 zl<span className="text-sm font-normal">/mies</span></p>
-                  </div>
-                  <div className="mt-3 w-full bg-blue-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
-                      style={{ width: `${(billing.propertiesCount / billing.propertiesLimit) * 100}%` }}
-                    />
-                  </div>
-                </div>
-
-                <h3 className="font-medium text-gray-900 mb-4">Dostepne plany</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <PlanCard
-                    name="Starter"
-                    price="0"
-                    features={['Do 3 nieruchomosci', 'Podstawowe funkcje', 'Email support']}
-                    current={billing.plan === 'starter'}
-                  />
-                  <PlanCard
-                    name="Growth"
-                    price="49"
-                    features={['Do 20 nieruchomosci', 'Wszystkie funkcje', 'Priorytetowy support', 'Eksport danych']}
-                    current={billing.plan === 'growth'}
-                    recommended
-                  />
-                  <PlanCard
-                    name="Professional"
-                    price="149"
-                    features={['Do 100 nieruchomosci', 'API dostep', 'Dedykowany opiekun', 'Customizacja']}
-                    current={billing.plan === 'professional'}
-                  />
-                </div>
-              </Card>
-            </div>
           )}
 
           {/* Security Tab */}
           {activeTab === 'security' && (
             <Card className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Shield className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold">Bezpieczenstwo</h2>
-                  <p className="text-sm text-gray-500">Zarzadzaj haslem i dostepem</p>
-                </div>
-              </div>
+              <h2 className="text-lg font-semibold mb-1">{t.settings.security}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings.securityDesc}</p>
 
-              <div className="space-y-6">
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-4">Zmiana hasla</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md">
-                    <div className="md:col-span-2">
-                      <Label htmlFor="currentPassword">Obecne haslo</Label>
-                      <Input
-                        id="currentPassword"
-                        type="password"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label htmlFor="newPassword">Nowe haslo</Label>
-                      <Input
-                        id="newPassword"
-                        type="password"
-                        className="mt-1"
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <Label htmlFor="confirmPassword">Potwierdz nowe haslo</Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        className="mt-1"
-                      />
-                    </div>
-                  </div>
-                  <Button className="mt-4">
-                    Zmien haslo
-                  </Button>
-                </div>
-
-                <div className="pt-6 border-t">
-                  <h3 className="font-medium text-gray-900 mb-4">Sesje</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Aktualnie zalogowany na 1 urzadzeniu
-                  </p>
-                  <Button variant="outline">
-                    Wyloguj ze wszystkich urzadzen
-                  </Button>
-                </div>
-
-                <div className="pt-6 border-t">
-                  <h3 className="font-medium text-red-600 mb-2">Strefa niebezpieczna</h3>
-                  <p className="text-sm text-gray-500 mb-4">
-                    Usuniecie konta jest nieodwracalne. Wszystkie dane zostana usuniete.
-                  </p>
-                  <Button variant="outline" className="text-red-600 border-red-200 hover:bg-red-50">
-                    Usun konto
-                  </Button>
+              <div className="space-y-4">
+                <Button variant="outline">{t.settings.changePassword}</Button>
+                
+                <div className="pt-4 border-t">
+                  <h3 className="font-medium text-red-600 mb-2">{t.settings.dangerZone}</h3>
+                  <p className="text-sm text-gray-500 mb-3">{t.settings.deleteAccountDesc}</p>
+                  <Button variant="destructive" size="sm">{t.settings.deleteAccount}</Button>
                 </div>
               </div>
             </Card>
@@ -393,83 +269,35 @@ export default function SettingsPage() {
   )
 }
 
-function NotificationToggle({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
+function NotificationToggle({ 
+  label, 
+  description, 
+  defaultChecked 
+}: { 
   label: string
   description: string
-  checked: boolean
-  onChange: () => void
+  defaultChecked: boolean 
 }) {
+  const [checked, setChecked] = useState(defaultChecked)
+  
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-lg">
       <div>
         <p className="font-medium text-gray-900">{label}</p>
         <p className="text-sm text-gray-500">{description}</p>
       </div>
       <button
-        type="button"
-        onClick={onChange}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? 'bg-blue-600' : 'bg-gray-200'
+        onClick={() => setChecked(!checked)}
+        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
+          checked ? 'bg-blue-600' : 'bg-gray-300'
         }`}
       >
         <span
-          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-            checked ? 'translate-x-6' : 'translate-x-1'
+          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+            checked ? 'translate-x-5' : ''
           }`}
         />
       </button>
-    </div>
-  )
-}
-
-function PlanCard({
-  name,
-  price,
-  features,
-  current,
-  recommended,
-}: {
-  name: string
-  price: string
-  features: string[]
-  current?: boolean
-  recommended?: boolean
-}) {
-  return (
-    <div className={`relative p-4 border-2 rounded-lg ${
-      current ? 'border-blue-500 bg-blue-50' : recommended ? 'border-purple-300' : 'border-gray-200'
-    }`}>
-      {recommended && (
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-          <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded-full">
-            Polecany
-          </span>
-        </div>
-      )}
-      <h4 className="font-semibold text-gray-900">{name}</h4>
-      <p className="text-2xl font-bold mt-2">
-        {price} zl<span className="text-sm font-normal text-gray-500">/mies</span>
-      </p>
-      <ul className="mt-4 space-y-2">
-        {features.map((feature, i) => (
-          <li key={i} className="flex items-center text-sm text-gray-600">
-            <Check className="h-4 w-4 text-green-500 mr-2" />
-            {feature}
-          </li>
-        ))}
-      </ul>
-      <Button 
-        className="w-full mt-4" 
-        variant={current ? 'outline' : 'default'}
-        disabled={current}
-      >
-        {current ? 'Aktualny plan' : 'Wybierz'}
-      </Button>
     </div>
   )
 }

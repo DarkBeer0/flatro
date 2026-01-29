@@ -14,15 +14,61 @@ model User {
   email     String   @unique
   name      String?
   phone     String?
+  role      UserRole @default(OWNER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Связи
+  // Банковские реквизиты (для владельцев)
+  bankName      String?
+  iban          String?
+  accountHolder String?
+
+  // Stripe Connect (для онлайн-платежей)
+  stripeAccountId String?
+  stripeOnboarded Boolean @default(false)
+
+  // Связи для OWNER
   properties Property[]
-  tenants    Tenant[]
+  tenants    Tenant[]     @relation("OwnerTenants")
   payments   Payment[]
 
+  // Связь для TENANT (жилец привязан к Tenant записи)
+  tenantProfile Tenant?   @relation("TenantUser")
+
+  // Сообщения
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+
+  // Заявки созданные (для жильцов)
+  tickets Ticket[]
+
+  // Объявления созданные (для владельцев)
+  announcements Announcement[]
+
   @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  TENANT
+}
+
+// ============== ПРИГЛАШЕНИЯ ==============
+
+model Invitation {
+  id         String    @id @default(uuid())
+  propertyId String
+  email      String?   // Опционально - можно пригласить конкретный email
+  code       String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  usedBy     String?   // ID пользователя который использовал
+  createdAt  DateTime  @default(now())
+
+  // Связи
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("invitations")
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
@@ -30,12 +76,12 @@ model User {
 model Property {
   id          String   @id @default(uuid())
   userId      String
-  name        String   // "Квартира на Марszałkowskiej"
+  name        String
   address     String
   city        String
   postalCode  String?
-  area        Float?   // Площадь в м²
-  rooms       Int?     // Количество комнат
+  area        Float?
+  rooms       Int?
   floor       Int?
   description String?
   status      PropertyStatus @default(VACANT)
@@ -43,42 +89,49 @@ model Property {
   updatedAt   DateTime @updatedAt
 
   // Связи
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenants     Tenant[]
-  meters      Meter[]
-  contracts   Contract[]
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenants      Tenant[]
+  meters       Meter[]
+  contracts    Contract[]
+  invitations  Invitation[]
+  messages     Message[]
+  tickets      Ticket[]
+  announcements Announcement[]
+  paymentTemplates PaymentTemplate[]
 
   @@map("properties")
 }
 
 enum PropertyStatus {
-  VACANT    // Свободна
-  OCCUPIED  // Занята
-  RESERVED  // Зарезервирована
+  VACANT
+  OCCUPIED
+  RESERVED
 }
 
 // ============== ЖИЛЬЦЫ ==============
 
 model Tenant {
-  id          String   @id @default(uuid())
-  userId      String   // Владелец, который добавил жильца
-  propertyId  String?  // К какой квартире привязан
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  pesel       String?  // Опционально
-  moveInDate  DateTime?
-  moveOutDate DateTime?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  userId       String   // Владелец, который добавил жильца
+  propertyId   String?
+  tenantUserId String?  @unique // Аккаунт жильца (если зарегистрировался)
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  pesel        String?
+  moveInDate   DateTime?
+  moveOutDate  DateTime?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   // Связи
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  property    Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
-  payments    Payment[]
-  contracts   Contract[]
+  user          User      @relation("OwnerTenants", fields: [userId], references: [id], onDelete: Cascade)
+  tenantUser    User?     @relation("TenantUser", fields: [tenantUserId], references: [id], onDelete: SetNull)
+  property      Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  payments      Payment[]
+  contracts     Contract[]
   meterReadings MeterReading[]
 
   @@map("tenants")
@@ -93,9 +146,9 @@ model Contract {
   type          ContractType @default(STANDARD)
   startDate     DateTime
   endDate       DateTime?
-  rentAmount    Float    // Czynsz в PLN
-  depositAmount Float?   // Kaucja
-  paymentDay    Int      @default(10) // День месяца для оплаты
+  rentAmount    Float
+  depositAmount Float?
+  paymentDay    Int      @default(10)
   status        ContractStatus @default(ACTIVE)
   notes         String?
   createdAt     DateTime @default(now())
@@ -109,33 +162,43 @@ model Contract {
 }
 
 enum ContractType {
-  STANDARD      // Zwykły najem
-  OCCASIONAL    // Najem okazjonalny
-  INSTITUTIONAL // Najem instytucjonalny
+  STANDARD
+  OCCASIONAL
+  INSTITUTIONAL
 }
 
 enum ContractStatus {
-  DRAFT    // Черновик
-  ACTIVE   // Активный
-  EXPIRED  // Истёк
-  TERMINATED // Расторгнут
+  DRAFT
+  ACTIVE
+  EXPIRED
+  TERMINATED
 }
 
 // ============== ПЛАТЕЖИ ==============
 
 model Payment {
   id          String   @id @default(uuid())
-  userId      String
+  userId      String   // Владелец
   tenantId    String
   amount      Float
   type        PaymentType
   status      PaymentStatus @default(PENDING)
-  dueDate     DateTime      // Срок оплаты
-  paidDate    DateTime?     // Когда оплачено
-  period      String?       // "2026-01" - за какой месяц
+  dueDate     DateTime
+  paidDate    DateTime?
+  period      String?
   notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  // Данные для подтверждения
+  markedPaidAt    DateTime? // Когда жилец нажал "Я оплатил"
+  confirmedAt     DateTime? // Когда владелец подтвердил
+  rejectedAt      DateTime? // Когда владелец отклонил
+  rejectionReason String?   // Причина отклонения
+
+  // Stripe
+  stripePaymentId String?   // ID платежа в Stripe
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Связи
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -145,17 +208,120 @@ model Payment {
 }
 
 enum PaymentType {
-  RENT      // Czynsz
-  UTILITIES // Media
-  DEPOSIT   // Kaucja
-  OTHER     // Inne
+  RENT
+  UTILITIES
+  DEPOSIT
+  OTHER
 }
 
 enum PaymentStatus {
-  PENDING   // Ожидает
-  PAID      // Оплачено
-  OVERDUE   // Просрочено
-  CANCELLED // Отменено
+  PENDING              // Ожидает оплаты
+  PENDING_CONFIRMATION // Жилец отметил оплату, ждёт подтверждения
+  PAID                 // Подтверждено/Оплачено
+  OVERDUE              // Просрочено
+  REJECTED             // Отклонено владельцем
+  CANCELLED            // Отменено
+}
+
+// ============== ШАБЛОНЫ ПЛАТЕЖЕЙ (для автоматического создания) ==============
+
+model PaymentTemplate {
+  id          String   @id @default(uuid())
+  propertyId  String
+  tenantId    String
+  amount      Float
+  type        PaymentType
+  dayOfMonth  Int      @default(1)  // День создания платежа
+  dueDayOfMonth Int    @default(10) // День оплаты
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("payment_templates")
+}
+
+// ============== СООБЩЕНИЯ ==============
+
+model Message {
+  id         String   @id @default(uuid())
+  senderId   String
+  receiverId String
+  propertyId String   // Контекст - к какой квартире относится
+  content    String
+  isRead     Boolean  @default(false)
+  readAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  // Связи
+  sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+// ============== ЗАЯВКИ (ТИКЕТЫ) ==============
+
+model Ticket {
+  id          String   @id @default(uuid())
+  propertyId  String
+  createdById String   // Кто создал (жилец)
+  title       String
+  description String
+  status      TicketStatus @default(NEW)
+  photos      String[] // URLs фотографий
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Связи
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  comments  TicketComment[]
+
+  @@map("tickets")
+}
+
+enum TicketStatus {
+  NEW         // Новая
+  IN_PROGRESS // В работе
+  RESOLVED    // Решена
+  CLOSED      // Закрыта
+}
+
+model TicketComment {
+  id        String   @id @default(uuid())
+  ticketId  String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  // Связи
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_comments")
+}
+
+// ============== ОБЪЯВЛЕНИЯ ==============
+
+model Announcement {
+  id         String    @id @default(uuid())
+  propertyId String
+  createdById String   // Владелец
+  title      String
+  content    String
+  eventDate  DateTime? // Дата события (если есть)
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Связи
+  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("announcements")
 }
 
 // ============== СЧЁТЧИКИ (MEDIA) ==============
@@ -164,9 +330,9 @@ model Meter {
   id          String    @id @default(uuid())
   propertyId  String
   type        MeterType
-  meterNumber String?   // Номер счётчика
-  unit        String    // kWh, m³, GJ
-  pricePerUnit Float?   // Тариф за единицу
+  meterNumber String?
+  unit        String
+  pricePerUnit Float?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
@@ -178,20 +344,20 @@ model Meter {
 }
 
 enum MeterType {
-  ELECTRICITY // Prąd
-  GAS         // Gaz
-  WATER_COLD  // Zimna woda
-  WATER_HOT   // Ciepła woda
-  HEATING     // Ogrzewanie
+  ELECTRICITY
+  GAS
+  WATER_COLD
+  WATER_HOT
+  HEATING
 }
 
 model MeterReading {
   id        String   @id @default(uuid())
   meterId   String
-  tenantId  String?  // Кто внёс показания
-  value     Float    // Показание
+  tenantId  String?
+  value     Float
   readingDate DateTime
-  photoUrl  String?  // Фото счётчика
+  photoUrl  String?
   createdAt DateTime @default(now())
 
   // Связи

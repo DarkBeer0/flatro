@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PasswordStrength, validatePassword } from '@/components/password-strength'
 import { createClient } from '@/lib/supabase/client'
 
 export default function RegisterPage() {
@@ -26,15 +27,17 @@ export default function RegisterPage() {
     setLoading(true)
     setError(null)
 
-    // Валидация
-    if (password !== confirmPassword) {
-      setError('Пароли не совпадают')
+    // Валидация пароля
+    const passwordValidation = validatePassword(password)
+    if (!passwordValidation.valid) {
+      setError(passwordValidation.error!)
       setLoading(false)
       return
     }
 
-    if (password.length < 6) {
-      setError('Пароль должен быть минимум 6 символов')
+    // Проверка совпадения паролей
+    if (password !== confirmPassword) {
+      setError('Пароли не совпадают')
       setLoading(false)
       return
     }
@@ -74,6 +77,9 @@ export default function RegisterPage() {
             <h2 className="text-xl font-semibold mb-2">Проверьте почту!</h2>
             <p className="text-gray-500 mb-4">
               Мы отправили ссылку для подтверждения на <strong>{email}</strong>
+            </p>
+            <p className="text-sm text-yellow-600 mb-4">
+              ⚠️ Проверьте папку "Спам", если письмо не пришло
             </p>
             <Link href="/login">
               <Button variant="outline" className="w-full">
@@ -146,13 +152,14 @@ export default function RegisterPage() {
                 <Input
                   id="password"
                   type="password"
-                  placeholder="Минимум 6 символов"
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10"
                   required
                 />
               </div>
+              <PasswordStrength password={password} />
             </div>
 
             <div className="space-y-2">
@@ -169,6 +176,12 @@ export default function RegisterPage() {
                   required
                 />
               </div>
+              {confirmPassword && password !== confirmPassword && (
+                <p className="text-xs text-red-600">Пароли не совпадают</p>
+              )}
+              {confirmPassword && password === confirmPassword && (
+                <p className="text-xs text-green-600">✓ Пароли совпадают</p>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

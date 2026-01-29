@@ -153,6 +153,20 @@ export interface Dictionary {
     nip: string
     saveChanges: string
     saved: string
+    logout: string
+    languageDesc: string
+    notificationsDesc: string
+    emailPaymentReminders: string
+    emailPaymentRemindersDesc: string
+    emailContractExpiry: string
+    emailContractExpiryDesc: string
+    emailNewTenant: string
+    emailNewTenantDesc: string
+    securityDesc: string
+    changePassword: string
+    dangerZone: string
+    deleteAccount: string
+    deleteAccountDesc: string
   }
   forms: {
     required: string
@@ -312,6 +326,20 @@ export const dictionaries: Record<Locale, Dictionary> = {
       nip: 'ИНН',
       saveChanges: 'Сохранить изменения',
       saved: 'Сохранено',
+      logout: 'Выйти',
+      languageDesc: 'Выберите язык интерфейса',
+      notificationsDesc: 'Настройте уведомления по email',
+      emailPaymentReminders: 'Напоминания о платежах',
+      emailPaymentRemindersDesc: 'Получать уведомления о приближающихся и просроченных платежах',
+      emailContractExpiry: 'Истечение договоров',
+      emailContractExpiryDesc: 'Получать уведомления об истекающих договорах',
+      emailNewTenant: 'Новые арендаторы',
+      emailNewTenantDesc: 'Получать уведомления при добавлении новых арендаторов',
+      securityDesc: 'Управление паролем и безопасностью аккаунта',
+      changePassword: 'Сменить пароль',
+      dangerZone: 'Опасная зона',
+      deleteAccount: 'Удалить аккаунт',
+      deleteAccountDesc: 'Удаление аккаунта необратимо. Все данные будут потеряны.',
     },
     forms: {
       required: 'Обязательно',
@@ -465,6 +493,20 @@ export const dictionaries: Record<Locale, Dictionary> = {
       nip: 'NIP',
       saveChanges: 'Zapisz zmiany',
       saved: 'Zapisano',
+      logout: 'Wyloguj',
+      languageDesc: 'Wybierz język interfejsu',
+      notificationsDesc: 'Skonfiguruj powiadomienia email',
+      emailPaymentReminders: 'Przypomnienia o płatnościach',
+      emailPaymentRemindersDesc: 'Otrzymuj powiadomienia o zbliżających się i zaległych płatnościach',
+      emailContractExpiry: 'Wygasające umowy',
+      emailContractExpiryDesc: 'Otrzymuj powiadomienia o wygasających umowach',
+      emailNewTenant: 'Nowi najemcy',
+      emailNewTenantDesc: 'Otrzymuj powiadomienia o dodaniu nowych najemców',
+      securityDesc: 'Zarządzanie hasłem i bezpieczeństwem konta',
+      changePassword: 'Zmień hasło',
+      dangerZone: 'Strefa niebezpieczna',
+      deleteAccount: 'Usuń konto',
+      deleteAccountDesc: 'Usunięcie konta jest nieodwracalne. Wszystkie dane zostaną utracone.',
     },
     forms: {
       required: 'Wymagane',
@@ -486,7 +528,24 @@ export const dictionaries: Record<Locale, Dictionary> = {
     tenants: { title: 'Tenants', subtitle: 'Manage your tenants', addNew: 'Add tenant', total: 'Total', active: 'Active', former: 'Former', activeTenants: 'Active tenants', formerTenants: 'Former tenants', noTenants: 'No tenants', noTenantsDesc: 'Add your first tenant to start managing', noProperty: 'No assigned property', status: { active: 'Active', inactive: 'Inactive' } },
     payments: { title: 'Payments', subtitle: 'Track tenant payments', addNew: 'Add payment', received: 'Received', pending: 'Pending', overdueAmount: 'Overdue', total: 'Total', noPayments: 'No payments', noPaymentsDesc: 'Add your first payment to start tracking', tenant: 'Tenant', property: 'Property', type: 'Type', period: 'Period', dueDate: 'Due date', amount: 'Amount', markAsPaid: 'Mark as paid', filters: { allStatuses: 'All statuses', allTypes: 'All types', allProperties: 'All properties' }, status: { pending: 'Pending', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled' }, types: { rent: 'Rent', utilities: 'Utilities', deposit: 'Deposit', other: 'Other' } },
     contracts: { title: 'Contracts', subtitle: 'Manage rental contracts', addNew: 'New contract', total: 'Total', activeCount: 'Active', expiringCount: 'Expiring', monthlyIncome: 'Monthly income', expiringAlert: 'Contracts expiring soon', expiringAlertDesc: 'contracts expire within 30 days.', noContracts: 'No contracts', noContractsDesc: 'Create your first rental contract', expiresIn: 'Expires in', days: 'days', payableBy: 'payable by', indefinite: 'indefinite', status: { draft: 'Draft', active: 'Active', expired: 'Expired', terminated: 'Terminated' }, types: { standard: 'Standard rental', occasional: 'Occasional rental', institutional: 'Institutional rental' } },
-    settings: { title: 'Settings', subtitle: 'Manage your account and preferences', profile: 'Profile', notifications: 'Notifications', billing: 'Subscription', security: 'Security', language: 'Language', profileData: 'Profile data', profileDataDesc: 'Update your personal information', name: 'Full name', email: 'Email', phone: 'Phone', company: 'Company name', companyPlaceholder: 'For invoices', nip: 'Tax ID', saveChanges: 'Save changes', saved: 'Saved' },
+    settings: { title: 'Settings', subtitle: 'Manage your account and preferences', profile: 'Profile',
+    notifications: 'Notifications', billing: 'Subscription', security: 'Security',
+    language: 'Language', profileData: 'Profile data', profileDataDesc: 'Update your personal information',
+    name: 'Full name', email: 'Email', phone: 'Phone', company: 'Company name', companyPlaceholder: 'For invoices',
+    nip: 'Tax ID', saveChanges: 'Save changes', saved: 'Saved', logout: 'Log out',
+    languageDesc: 'Choose interface language',
+    notificationsDesc: 'Configure email notifications',
+    emailPaymentReminders: 'Payment reminders',
+    emailPaymentRemindersDesc: 'Receive notifications about upcoming and overdue payments',
+    emailContractExpiry: 'Contract expiry',
+    emailContractExpiryDesc: 'Receive notifications about expiring contracts',
+    emailNewTenant: 'New tenants',
+    emailNewTenantDesc: 'Receive notifications when new tenants are added',
+    securityDesc: 'Manage password and account security',
+    changePassword: 'Change password',
+    dangerZone: 'Danger zone',
+    deleteAccount: 'Delete account',
+    deleteAccountDesc: 'Account deletion is irreversible. All data will be lost.', },
     forms: { required: 'Required', optional: 'Optional', selectOption: '-- Select --', basicInfo: 'Basic information', propertyDetails: 'Property details', financialInfo: 'Financial information', additionalInfo: 'Additional information', notes: 'Notes' },
   },
 
@@ -499,7 +558,22 @@ export const dictionaries: Record<Locale, Dictionary> = {
     tenants: { title: 'Mieter', subtitle: 'Verwalten Sie Ihre Mieter', addNew: 'Mieter hinzufügen', total: 'Gesamt', active: 'Aktiv', former: 'Ehemalige', activeTenants: 'Aktive Mieter', formerTenants: 'Ehemalige Mieter', noTenants: 'Keine Mieter', noTenantsDesc: 'Fügen Sie Ihren ersten Mieter hinzu', noProperty: 'Keine zugewiesene Immobilie', status: { active: 'Aktiv', inactive: 'Inaktiv' } },
     payments: { title: 'Zahlungen', subtitle: 'Mietzahlungen verfolgen', addNew: 'Zahlung hinzufügen', received: 'Erhalten', pending: 'Ausstehend', overdueAmount: 'Überfällig', total: 'Gesamt', noPayments: 'Keine Zahlungen', noPaymentsDesc: 'Fügen Sie Ihre erste Zahlung hinzu', tenant: 'Mieter', property: 'Immobilie', type: 'Typ', period: 'Zeitraum', dueDate: 'Fällig am', amount: 'Betrag', markAsPaid: 'Als bezahlt markieren', filters: { allStatuses: 'Alle Status', allTypes: 'Alle Typen', allProperties: 'Alle Immobilien' }, status: { pending: 'Ausstehend', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }, types: { rent: 'Miete', utilities: 'Nebenkosten', deposit: 'Kaution', other: 'Sonstiges' } },
     contracts: { title: 'Verträge', subtitle: 'Mietverträge verwalten', addNew: 'Neuer Vertrag', total: 'Gesamt', activeCount: 'Aktiv', expiringCount: 'Auslaufend', monthlyIncome: 'Monatliches Einkommen', expiringAlert: 'Bald auslaufende Verträge', expiringAlertDesc: 'Verträge laufen in 30 Tagen aus.', noContracts: 'Keine Verträge', noContractsDesc: 'Erstellen Sie Ihren ersten Mietvertrag', expiresIn: 'Läuft ab in', days: 'Tagen', payableBy: 'zahlbar bis', indefinite: 'unbefristet', status: { draft: 'Entwurf', active: 'Aktiv', expired: 'Abgelaufen', terminated: 'Gekündigt' }, types: { standard: 'Standardmiete', occasional: 'Gelegentliche Miete', institutional: 'Institutionelle Miete' } },
-    settings: { title: 'Einstellungen', subtitle: 'Konto und Präferenzen verwalten', profile: 'Profil', notifications: 'Benachrichtigungen', billing: 'Abonnement', security: 'Sicherheit', language: 'Sprache', profileData: 'Profildaten', profileDataDesc: 'Aktualisieren Sie Ihre persönlichen Daten', name: 'Vollständiger Name', email: 'E-Mail', phone: 'Telefon', company: 'Firmenname', companyPlaceholder: 'Für Rechnungen', nip: 'Steuer-ID', saveChanges: 'Änderungen speichern', saved: 'Gespeichert' },
+    settings: { title: 'Einstellungen', subtitle: 'Konto und Präferenzen verwalten', profile: 'Profil', notifications: 'Benachrichtigungen', billing: 'Abonnement', security: 'Sicherheit', language: 'Sprache', profileData: 'Profildaten', profileDataDesc: 'Aktualisieren Sie Ihre persönlichen Daten', name: 'Vollständiger Name', email: 'E-Mail', phone: 'Telefon', company: 'Firmenname', companyPlaceholder: 'Für Rechnungen', nip: 'Steuer-ID', saveChanges: 'Änderungen speichern', saved: 'Gespeichert',
+    logout: 'Abmelden',
+    languageDesc: 'Sprache der Benutzeroberfläche wählen',
+    notificationsDesc: 'E-Mail-Benachrichtigungen konfigurieren',
+    emailPaymentReminders: 'Zahlungserinnerungen',
+    emailPaymentRemindersDesc: 'Benachrichtigungen über anstehende und überfällige Zahlungen erhalten',
+    emailContractExpiry: 'Vertragsablauf',
+    emailContractExpiryDesc: 'Benachrichtigungen über ablaufende Verträge erhalten',
+    emailNewTenant: 'Neue Mieter',
+    emailNewTenantDesc: 'Benachrichtigungen erhalten, wenn neue Mieter hinzugefügt werden',
+    securityDesc: 'Passwort und Kontosicherheit verwalten',
+    changePassword: 'Passwort ändern',
+    dangerZone: 'Gefahrenzone',
+    deleteAccount: 'Konto löschen',
+    deleteAccountDesc: 'Die Kontolöschung ist unwiderruflich. Alle Daten gehen verloren.',
+    },
     forms: { required: 'Erforderlich', optional: 'Optional', selectOption: '-- Auswählen --', basicInfo: 'Grundinformationen', propertyDetails: 'Immobiliendetails', financialInfo: 'Finanzinformationen', additionalInfo: 'Zusätzliche Informationen', notes: 'Notizen' },
   },
 
@@ -512,7 +586,22 @@ export const dictionaries: Record<Locale, Dictionary> = {
     tenants: { title: 'Орендарі', subtitle: 'Керування орендарями вашої нерухомості', addNew: 'Додати орендаря', total: 'Всього', active: 'Активних', former: 'Колишніх', activeTenants: 'Активні орендарі', formerTenants: 'Колишні орендарі', noTenants: 'Немає орендарів', noTenantsDesc: 'Додайте першого орендаря для початку керування', noProperty: 'Не привязаний до нерухомості', status: { active: 'Активний', inactive: 'Неактивний' } },
     payments: { title: 'Платежі', subtitle: 'Відстеження платежів від орендарів', addNew: 'Додати платіж', received: 'Отримано', pending: 'Очікується', overdueAmount: 'Прострочено', total: 'Всього', noPayments: 'Немає платежів', noPaymentsDesc: 'Додайте перший платіж для початку відстеження', tenant: 'Орендар', property: 'Нерухомість', type: 'Тип', period: 'Період', dueDate: 'Термін', amount: 'Сума', markAsPaid: 'Позначити як сплачений', filters: { allStatuses: 'Всі статуси', allTypes: 'Всі типи', allProperties: 'Вся нерухомість' }, status: { pending: 'Очікує', paid: 'Сплачено', overdue: 'Прострочено', cancelled: 'Скасовано' }, types: { rent: 'Оренда', utilities: 'Комунальні', deposit: 'Застава', other: 'Інше' } },
     contracts: { title: 'Договори', subtitle: 'Керування договорами оренди', addNew: 'Новий договір', total: 'Всього', activeCount: 'Активних', expiringCount: 'Закінчуються', monthlyIncome: 'Місячний дохід', expiringAlert: 'Договори, що закінчуються', expiringAlertDesc: 'договорів закінчуються протягом 30 днів.', noContracts: 'Немає договорів', noContractsDesc: 'Створіть перший договір оренди', expiresIn: 'Закінчується через', days: 'днів', payableBy: 'оплата до', indefinite: 'безстроково', status: { draft: 'Чернетка', active: 'Активний', expired: 'Закінчився', terminated: 'Розірваний' }, types: { standard: 'Стандартна оренда', occasional: 'Випадкова оренда', institutional: 'Інституційна оренда' } },
-    settings: { title: 'Налаштування', subtitle: 'Керування обліковим записом та налаштуваннями', profile: 'Профіль', notifications: 'Сповіщення', billing: 'Підписка', security: 'Безпека', language: 'Мова', profileData: 'Дані профілю', profileDataDesc: 'Оновіть ваші особисті дані', name: "Ім'я та прізвище", email: 'Email', phone: 'Телефон', company: 'Назва компанії', companyPlaceholder: 'Для рахунків', nip: 'ІПН', saveChanges: 'Зберегти зміни', saved: 'Збережено' },
+    settings: { title: 'Налаштування', subtitle: 'Керування обліковим записом та налаштуваннями', profile: 'Профіль', notifications: 'Сповіщення', billing: 'Підписка', security: 'Безпека', language: 'Мова', profileData: 'Дані профілю', profileDataDesc: 'Оновіть ваші особисті дані', name: "Ім'я та прізвище", email: 'Email', phone: 'Телефон', company: 'Назва компанії', companyPlaceholder: 'Для рахунків', nip: 'ІПН', saveChanges: 'Зберегти зміни', saved: 'Збережено',
+    logout: 'Вийти',
+    languageDesc: 'Виберіть мову інтерфейсу',
+    notificationsDesc: 'Налаштуйте сповіщення електронною поштою',
+    emailPaymentReminders: 'Нагадування про платежі',
+    emailPaymentRemindersDesc: 'Отримувати сповіщення про наближені та прострочені платежі',
+    emailContractExpiry: 'Закінчення договорів',
+    emailContractExpiryDesc: 'Отримувати сповіщення про договори, що закінчуються',
+    emailNewTenant: 'Нові орендарі',
+    emailNewTenantDesc: 'Отримувати сповіщення про додавання нових орендарів',
+    securityDesc: 'Керування паролем та безпекою облікового запису',
+    changePassword: 'Змінити пароль',
+    dangerZone: 'Небезпечна зона',
+    deleteAccount: 'Видалити обліковий запис',
+    deleteAccountDesc: 'Видалення облікового запису незворотнє. Усі дані будуть втрачені.',
+    },
     forms: { required: "Обов'язково", optional: "Необов'язково", selectOption: '-- Виберіть --', basicInfo: 'Основна інформація', propertyDetails: 'Деталі нерухомості', financialInfo: 'Фінансова інформація', additionalInfo: 'Додаткова інформація', notes: 'Нотатки' },
   },
 
@@ -525,7 +614,21 @@ export const dictionaries: Record<Locale, Dictionary> = {
     tenants: { title: 'Nájemníci', subtitle: 'Správa nájemníků vašich nemovitostí', addNew: 'Přidat nájemníka', total: 'Celkem', active: 'Aktivních', former: 'Bývalých', activeTenants: 'Aktivní nájemníci', formerTenants: 'Bývalí nájemníci', noTenants: 'Žádní nájemníci', noTenantsDesc: 'Přidejte prvního nájemníka pro začátek správy', noProperty: 'Nepřiřazená nemovitost', status: { active: 'Aktivní', inactive: 'Neaktivní' } },
     payments: { title: 'Platby', subtitle: 'Sledování plateb od nájemníků', addNew: 'Přidat platbu', received: 'Přijato', pending: 'Čekající', overdueAmount: 'Po splatnosti', total: 'Celkem', noPayments: 'Žádné platby', noPaymentsDesc: 'Přidejte první platbu pro začátek sledování', tenant: 'Nájemník', property: 'Nemovitost', type: 'Typ', period: 'Období', dueDate: 'Splatnost', amount: 'Částka', markAsPaid: 'Označit jako zaplacené', filters: { allStatuses: 'Všechny stavy', allTypes: 'Všechny typy', allProperties: 'Všechny nemovitosti' }, status: { pending: 'Čeká', paid: 'Zaplaceno', overdue: 'Po splatnosti', cancelled: 'Zrušeno' }, types: { rent: 'Nájem', utilities: 'Služby', deposit: 'Kauce', other: 'Ostatní' } },
     contracts: { title: 'Smlouvy', subtitle: 'Správa nájemních smluv', addNew: 'Nová smlouva', total: 'Celkem', activeCount: 'Aktivních', expiringCount: 'Končících', monthlyIncome: 'Měsíční příjem', expiringAlert: 'Končící smlouvy', expiringAlertDesc: 'smluv končí do 30 dnů.', noContracts: 'Žádné smlouvy', noContractsDesc: 'Vytvořte první nájemní smlouvu', expiresIn: 'Končí za', days: 'dní', payableBy: 'splatnost', indefinite: 'na dobu neurčitou', status: { draft: 'Koncept', active: 'Aktivní', expired: 'Vypršela', terminated: 'Ukončena' }, types: { standard: 'Standardní nájem', occasional: 'Příležitostný nájem', institutional: 'Institucionální nájem' } },
-    settings: { title: 'Nastavení', subtitle: 'Správa účtu a preferencí', profile: 'Profil', notifications: 'Oznámení', billing: 'Předplatné', security: 'Zabezpečení', language: 'Jazyk', profileData: 'Údaje profilu', profileDataDesc: 'Aktualizujte své osobní údaje', name: 'Celé jméno', email: 'E-mail', phone: 'Telefon', company: 'Název firmy', companyPlaceholder: 'Pro faktury', nip: 'DIČ', saveChanges: 'Uložit změny', saved: 'Uloženo' },
+    settings: { title: 'Nastavení', subtitle: 'Správa účtu a preferencí', profile: 'Profil', notifications: 'Oznámení', billing: 'Předplatné', security: 'Zabezpečení', language: 'Jazyk', profileData: 'Údaje profilu', profileDataDesc: 'Aktualizujte své osobní údaje', name: 'Celé jméno', email: 'E-mail', phone: 'Telefon', company: 'Název firmy', companyPlaceholder: 'Pro faktury', nip: 'DIČ', saveChanges: 'Uložit změny', saved: 'Uloženo', logout: 'Odhlásit se',
+    languageDesc: 'Vyberte jazyk rozhraní',
+    notificationsDesc: 'Nakonfigurujte e-mailová oznámení',
+    emailPaymentReminders: 'Připomínky plateb',
+    emailPaymentRemindersDesc: 'Dostávat oznámení o blížících se a zpožděných platbách',
+    emailContractExpiry: 'Vypršení smlouvy',
+    emailContractExpiryDesc: 'Dostávat oznámení o končících smlouvách',
+    emailNewTenant: 'Noví nájemníci',
+    emailNewTenantDesc: 'Dostávat oznámení o přidání nových nájemníků',
+    securityDesc: 'Správa hesla a zabezpečení účtu',
+    changePassword: 'Změnit heslo',
+    dangerZone: 'Nebezpečná zóna',
+    deleteAccount: 'Smazat účet',
+    deleteAccountDesc: 'Smazání účtu je nevratné. Všechna data budou ztracena.',
+    },
     forms: { required: 'Povinné', optional: 'Nepovinné', selectOption: '-- Vyberte --', basicInfo: 'Základní informace', propertyDetails: 'Detaily nemovitosti', financialInfo: 'Finanční informace', additionalInfo: 'Další informace', notes: 'Poznámky' },
   },
 }
