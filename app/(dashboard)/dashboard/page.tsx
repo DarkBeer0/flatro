@@ -1,22 +1,56 @@
-// src/app/(dashboard)/dashboard/page.tsx
+// app/(dashboard)/dashboard/page.tsx
 'use client'
 
+import { useEffect, useState } from 'react'
 import { Card } from '@/components/ui/card'
-import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home } from 'lucide-react'
+import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
 
+interface DashboardStats {
+  properties: { total: number; occupied: number; vacant: number }
+  tenants: { total: number; active: number }
+  payments: { pending: number; overdue: number; pendingAmount: number; overdueAmount: number }
+  contracts: { active: number; expiring: number }
+  monthlyIncome: number
+}
+
 export default function DashboardPage() {
   const { t } = useLocale()
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const stats = {
-    totalProperties: 3,
-    occupiedProperties: 2,
-    vacantProperties: 1,
-    totalTenants: 2,
-    pendingPayments: 1,
-    overduePayments: 1,
-    monthlyIncome: 7700,
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch('/api/dashboard/stats')
+        if (res.ok) {
+          const data = await res.json()
+          setStats(data)
+        }
+      } catch (error) {
+        console.error('Error fetching stats:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  const data = stats || {
+    properties: { total: 0, occupied: 0, vacant: 0 },
+    tenants: { total: 0, active: 0 },
+    payments: { pending: 0, overdue: 0, pendingAmount: 0, overdueAmount: 0 },
+    contracts: { active: 0, expiring: 0 },
+    monthlyIncome: 0,
   }
 
   return (
@@ -30,28 +64,28 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-6 lg:mb-8">
         <StatCard
           title={t.dashboard.properties}
-          value={stats.totalProperties}
-          subtitle={`${stats.occupiedProperties} ${t.dashboard.occupied}, ${stats.vacantProperties} ${t.dashboard.vacant}`}
+          value={data.properties.total}
+          subtitle={`${data.properties.occupied} ${t.dashboard.occupied}, ${data.properties.vacant} ${t.dashboard.vacant}`}
           icon={<Building2 className="h-5 w-5 lg:h-6 lg:w-6 text-blue-600" />}
           color="blue"
         />
         <StatCard
           title={t.dashboard.tenants}
-          value={stats.totalTenants}
-          subtitle={t.dashboard.activeTenants}
+          value={data.tenants.total}
+          subtitle={`${data.tenants.active} ${t.dashboard.activeTenants}`}
           icon={<Users className="h-5 w-5 lg:h-6 lg:w-6 text-green-600" />}
           color="green"
         />
         <StatCard
           title={t.dashboard.pendingPayments}
-          value={stats.pendingPayments}
-          subtitle={`${stats.overduePayments} ${t.dashboard.overdue}`}
+          value={data.payments.pending}
+          subtitle={`${data.payments.overdue} ${t.dashboard.overdue}`}
           icon={<CreditCard className="h-5 w-5 lg:h-6 lg:w-6 text-yellow-600" />}
           color="yellow"
         />
         <StatCard
           title={t.dashboard.monthlyIncome}
-          value={`${stats.monthlyIncome.toLocaleString()} ${t.common.currency}`}
+          value={`${data.monthlyIncome.toLocaleString()} ${t.common.currency}`}
           subtitle={t.dashboard.currentMonth}
           icon={<TrendingUp className="h-5 w-5 lg:h-6 lg:w-6 text-purple-600" />}
           color="purple"
@@ -71,11 +105,37 @@ export default function DashboardPage() {
 
         <Card className="p-4 lg:p-6">
           <h2 className="text-lg font-semibold mb-4">{t.dashboard.recentActivity}</h2>
-          <div className="text-gray-500 text-center py-6 lg:py-8">
-            <AlertTriangle className="h-10 w-10 lg:h-12 lg:w-12 mx-auto mb-3 text-gray-300" />
-            <p className="font-medium">{t.dashboard.noActivity}</p>
-            <p className="text-sm mt-1">{t.dashboard.noActivityDesc}</p>
-          </div>
+          {data.properties.total === 0 ? (
+            <div className="text-gray-500 text-center py-6 lg:py-8">
+              <AlertTriangle className="h-10 w-10 lg:h-12 lg:w-12 mx-auto mb-3 text-gray-300" />
+              <p className="font-medium">{t.dashboard.noActivity}</p>
+              <p className="text-sm mt-1">{t.dashboard.noActivityDesc}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {data.contracts.expiring > 0 && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    ⚠️ {data.contracts.expiring} {t.contracts.expiringAlertDesc}
+                  </p>
+                </div>
+              )}
+              {data.payments.overdue > 0 && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-800">
+                    🔴 {data.payments.overdue} платежей просрочено на сумму {data.payments.overdueAmount} {t.common.currency}
+                  </p>
+                </div>
+              )}
+              {data.payments.pending > 0 && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    💰 {data.payments.pending} платежей ожидают оплаты
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </Card>
       </div>
     </div>

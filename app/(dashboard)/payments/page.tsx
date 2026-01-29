@@ -1,39 +1,88 @@
-// src/app/(dashboard)/payments/page.tsx
+// app/(dashboard)/payments/page.tsx
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
-import { Plus, CreditCard, AlertTriangle, CheckCircle, Clock, Filter, X, ChevronDown } from 'lucide-react'
+import { Plus, CreditCard, AlertTriangle, CheckCircle, Clock, Filter, X, ChevronDown, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/lib/i18n/context'
 
-// Mock data
-const mockPayments = [
-  { id: '1', tenant: { id: '1', firstName: 'Jan', lastName: 'Kowalski' }, property: { id: '1', name: 'Mieszkanie Mokotow' }, amount: 3500, type: 'RENT' as const, status: 'PAID' as const, dueDate: '2024-03-10', paidDate: '2024-03-05', period: '2024-03' },
-  { id: '2', tenant: { id: '2', firstName: 'Anna', lastName: 'Nowak' }, property: { id: '3', name: 'Mieszkanie Wola' }, amount: 4200, type: 'RENT' as const, status: 'PENDING' as const, dueDate: '2024-03-10', paidDate: null, period: '2024-03' },
-  { id: '3', tenant: { id: '1', firstName: 'Jan', lastName: 'Kowalski' }, property: { id: '1', name: 'Mieszkanie Mokotow' }, amount: 350, type: 'UTILITIES' as const, status: 'OVERDUE' as const, dueDate: '2024-02-28', paidDate: null, period: '2024-02' },
-  { id: '4', tenant: { id: '1', firstName: 'Jan', lastName: 'Kowalski' }, property: { id: '1', name: 'Mieszkanie Mokotow' }, amount: 3500, type: 'RENT' as const, status: 'PAID' as const, dueDate: '2024-02-10', paidDate: '2024-02-08', period: '2024-02' },
-  { id: '5', tenant: { id: '2', firstName: 'Anna', lastName: 'Nowak' }, property: { id: '3', name: 'Mieszkanie Wola' }, amount: 8400, type: 'DEPOSIT' as const, status: 'PAID' as const, dueDate: '2023-06-15', paidDate: '2023-06-14', period: '2023-06' },
-]
+interface Payment {
+  id: string
+  amount: number
+  type: 'RENT' | 'UTILITIES' | 'DEPOSIT' | 'OTHER'
+  status: 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED'
+  dueDate: string
+  paidDate: string | null
+  period: string | null
+  tenant: {
+    id: string
+    firstName: string
+    lastName: string
+    property: {
+      id: string
+      name: string
+    } | null
+  }
+}
 
-const mockProperties = [
-  { id: '1', name: 'Mieszkanie Mokotow' },
-  { id: '3', name: 'Mieszkanie Wola' },
-]
-
-type PaymentStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED'
-type PaymentType = 'RENT' | 'UTILITIES' | 'DEPOSIT' | 'OTHER'
+interface Property {
+  id: string
+  name: string
+}
 
 export default function PaymentsPage() {
   const { t } = useLocale()
+  const [payments, setPayments] = useState<Payment[]>([])
+  const [properties, setProperties] = useState<Property[]>([])
+  const [loading, setLoading] = useState(true)
   
   // Filter state
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('')
-  const [typeFilter, setTypeFilter] = useState<PaymentType | ''>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
+  const [typeFilter, setTypeFilter] = useState<string>('')
   const [propertyFilter, setPropertyFilter] = useState('')
   const [showFilters, setShowFilters] = useState(false)
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  async function fetchData() {
+    try {
+      const [paymentsRes, propertiesRes] = await Promise.all([
+        fetch('/api/payments'),
+        fetch('/api/properties')
+      ])
+      
+      if (paymentsRes.ok) {
+        const data = await paymentsRes.json()
+        setPayments(data)
+      }
+      if (propertiesRes.ok) {
+        const data = await propertiesRes.json()
+        setProperties(data)
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function markAsPaid(id: string) {
+    try {
+      const res = await fetch(`/api/payments/${id}/mark-paid`, { method: 'POST' })
+      if (res.ok) {
+        setPayments(payments.map(p => 
+          p.id === id ? { ...p, status: 'PAID' as const, paidDate: new Date().toISOString() } : p
+        ))
+      }
+    } catch (error) {
+      console.error('Error marking as paid:', error)
+    }
+  }
 
   const statusConfig = {
     PENDING: { label: t.payments.status.pending, color: 'bg-yellow-100 text-yellow-800', icon: Clock },
@@ -51,24 +100,33 @@ export default function PaymentsPage() {
 
   // WORKING FILTERS
   const filteredPayments = useMemo(() => {
-    return mockPayments.filter(payment => {
+    return payments.filter(payment => {
       if (statusFilter && payment.status !== statusFilter) return false
       if (typeFilter && payment.type !== typeFilter) return false
-      if (propertyFilter && payment.property.id !== propertyFilter) return false
+      if (propertyFilter && payment.tenant.property?.id !== propertyFilter) return false
       return true
     })
-  }, [statusFilter, typeFilter, propertyFilter])
+  }, [payments, statusFilter, typeFilter, propertyFilter])
 
   const stats = useMemo(() => {
-    const totalPending = mockPayments.filter(p => p.status === 'PENDING').reduce((sum, p) => sum + p.amount, 0)
-    const totalOverdue = mockPayments.filter(p => p.status === 'OVERDUE').reduce((sum, p) => sum + p.amount, 0)
-    const totalPaidThisMonth = mockPayments.filter(p => p.status === 'PAID' && p.period === '2024-03').reduce((sum, p) => sum + p.amount, 0)
+    const totalPending = payments.filter(p => p.status === 'PENDING').reduce((sum, p) => sum + p.amount, 0)
+    const totalOverdue = payments.filter(p => p.status === 'OVERDUE').reduce((sum, p) => sum + p.amount, 0)
+    const thisMonth = new Date().toISOString().slice(0, 7)
+    const totalPaidThisMonth = payments.filter(p => p.status === 'PAID' && p.period === thisMonth).reduce((sum, p) => sum + p.amount, 0)
     return { totalPending, totalOverdue, totalPaidThisMonth }
-  }, [])
+  }, [payments])
 
   const hasActiveFilters = statusFilter || typeFilter || propertyFilter
   const activeFiltersCount = [statusFilter, typeFilter, propertyFilter].filter(Boolean).length
   const clearFilters = () => { setStatusFilter(''); setTypeFilter(''); setPropertyFilter('') }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
 
   return (
     <div className="w-full">
@@ -127,7 +185,7 @@ export default function PaymentsPage() {
               <CreditCard className="h-4 w-4 lg:h-5 lg:w-5 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-lg lg:text-2xl font-bold">{mockPayments.length}</p>
+              <p className="text-lg lg:text-2xl font-bold">{payments.length}</p>
               <p className="text-xs lg:text-sm text-gray-500 truncate">{t.payments.total}</p>
             </div>
           </div>
@@ -158,14 +216,14 @@ export default function PaymentsPage() {
           </div>
           
           <div className="flex flex-col sm:flex-row gap-2 lg:gap-3 flex-1">
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as PaymentStatus | '')} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white">
+            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white">
               <option value="">{t.payments.filters.allStatuses}</option>
               <option value="PENDING">{t.payments.status.pending}</option>
               <option value="PAID">{t.payments.status.paid}</option>
               <option value="OVERDUE">{t.payments.status.overdue}</option>
             </select>
             
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as PaymentType | '')} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white">
+            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white">
               <option value="">{t.payments.filters.allTypes}</option>
               <option value="RENT">{t.payments.types.rent}</option>
               <option value="UTILITIES">{t.payments.types.utilities}</option>
@@ -175,7 +233,7 @@ export default function PaymentsPage() {
             
             <select value={propertyFilter} onChange={(e) => setPropertyFilter(e.target.value)} className="flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm bg-white">
               <option value="">{t.payments.filters.allProperties}</option>
-              {mockProperties.map((property) => (
+              {properties.map((property) => (
                 <option key={property.id} value={property.id}>{property.name}</option>
               ))}
             </select>
@@ -215,7 +273,7 @@ export default function PaymentsPage() {
                   <div className="flex items-start justify-between mb-3">
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-gray-900 truncate">{payment.tenant.firstName} {payment.tenant.lastName}</p>
-                      <p className="text-sm text-gray-500 truncate">{payment.property.name}</p>
+                      <p className="text-sm text-gray-500 truncate">{payment.tenant.property?.name || '—'}</p>
                     </div>
                     <Badge className={`${status.color} flex items-center gap-1 flex-shrink-0 ml-2`}>
                       <StatusIcon className="h-3 w-3" />
@@ -227,11 +285,13 @@ export default function PaymentsPage() {
                     <p className="font-bold text-lg">{payment.amount} {t.common.currency}</p>
                   </div>
                   <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
-                    <span>{t.payments.period}: {payment.period}</span>
-                    <span>{t.payments.dueDate}: {payment.dueDate}</span>
+                    <span>{t.payments.period}: {payment.period || '—'}</span>
+                    <span>{t.payments.dueDate}: {new Date(payment.dueDate).toLocaleDateString()}</span>
                   </div>
                   {(payment.status === 'PENDING' || payment.status === 'OVERDUE') && (
-                    <Button size="sm" className="w-full"><CheckCircle className="h-4 w-4 mr-2" />{t.payments.markAsPaid}</Button>
+                    <Button size="sm" className="w-full" onClick={() => markAsPaid(payment.id)}>
+                      <CheckCircle className="h-4 w-4 mr-2" />{t.payments.markAsPaid}
+                    </Button>
                   )}
                 </Card>
               )
@@ -261,16 +321,16 @@ export default function PaymentsPage() {
                     const StatusIcon = status.icon
                     return (
                       <tr key={payment.id} className="border-b hover:bg-gray-50">
-                        <td className="p-4"><Link href={`/tenants/${payment.tenant.id}`} className="font-medium text-gray-900 hover:text-blue-600">{payment.tenant.firstName} {payment.tenant.lastName}</Link></td>
-                        <td className="p-4"><Link href={`/properties/${payment.property.id}`} className="text-gray-600 hover:text-blue-600">{payment.property.name}</Link></td>
+                        <td className="p-4 font-medium text-gray-900">{payment.tenant.firstName} {payment.tenant.lastName}</td>
+                        <td className="p-4 text-gray-600">{payment.tenant.property?.name || '—'}</td>
                         <td className="p-4"><Badge className={type.color}>{type.label}</Badge></td>
-                        <td className="p-4 text-gray-600">{payment.period}</td>
-                        <td className="p-4 text-gray-600">{payment.dueDate}</td>
+                        <td className="p-4 text-gray-600">{payment.period || '—'}</td>
+                        <td className="p-4 text-gray-600">{new Date(payment.dueDate).toLocaleDateString()}</td>
                         <td className="p-4 text-right font-semibold">{payment.amount} {t.common.currency}</td>
                         <td className="p-4"><Badge className={`${status.color} flex items-center gap-1 w-fit`}><StatusIcon className="h-3 w-3" />{status.label}</Badge></td>
                         <td className="p-4 text-right">
-                          {payment.status === 'PENDING' || payment.status === 'OVERDUE' ? (
-                            <Button size="sm" variant="outline">{t.payments.markAsPaid}</Button>
+                          {(payment.status === 'PENDING' || payment.status === 'OVERDUE') ? (
+                            <Button size="sm" variant="outline" onClick={() => markAsPaid(payment.id)}>{t.payments.markAsPaid}</Button>
                           ) : (
                             <Button size="sm" variant="ghost">{t.common.details}</Button>
                           )}

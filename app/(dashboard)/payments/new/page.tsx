@@ -1,244 +1,243 @@
+// app/(dashboard)/payments/new/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, CreditCard, Save } from 'lucide-react'
+import { ArrowLeft, Loader2, CreditCard } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { useLocale } from '@/lib/i18n/context'
 
-// Mock data
-const mockTenants = [
-  { id: '1', firstName: 'Jan', lastName: 'Kowalski', property: 'Mieszkanie Mokotow' },
-  { id: '2', firstName: 'Anna', lastName: 'Nowak', property: 'Mieszkanie Wola' },
-]
+interface Tenant {
+  id: string
+  firstName: string
+  lastName: string
+  property: {
+    id: string
+    name: string
+  } | null
+}
 
 export default function NewPaymentPage() {
   const router = useRouter()
-  const [isLoading, setIsLoading] = useState(false)
+  const { t } = useLocale()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [tenants, setTenants] = useState<Tenant[]>([])
+
   const [formData, setFormData] = useState({
     tenantId: '',
     amount: '',
     type: 'RENT',
-    status: 'PENDING',
     dueDate: '',
-    paidDate: '',
     period: '',
     notes: '',
   })
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+  useEffect(() => {
+    async function fetchTenants() {
+      try {
+        const res = await fetch('/api/tenants')
+        if (res.ok) {
+          const data = await res.json()
+          // Только активные арендаторы
+          setTenants(data.filter((t: any) => t.isActive))
+        }
+      } catch (error) {
+        console.error('Error fetching tenants:', error)
+      }
+    }
+    fetchTenants()
+
+    // Установить текущий месяц как период по умолчанию
+    const now = new Date()
+    const period = now.toISOString().slice(0, 7) // YYYY-MM
+    const dueDate = new Date(now.getFullYear(), now.getMonth(), 10).toISOString().slice(0, 10)
+    setFormData(prev => ({ ...prev, period, dueDate }))
+  }, [])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value })
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
+    setLoading(true)
+    setError(null)
 
     try {
-      // TODO: Zapisz do bazy danych przez API
-      console.log('Form data:', formData)
-      
-      // Symulacja zapisu
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // Przekieruj do listy platnosci
+      const res = await fetch('/api/payments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create payment')
+      }
+
       router.push('/payments')
-    } catch (error) {
-      console.error('Error saving payment:', error)
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Произошла ошибка')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  // Ustaw domyslny okres na biezacy miesiac
-  const currentPeriod = new Date().toISOString().slice(0, 7)
-
   return (
-    <div className="w-full max-w-3xl mx-auto">
+    <div className="w-full max-w-2xl mx-auto">
       {/* Header */}
-      <div className="mb-8">
-        <Link 
-          href="/payments" 
-          className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 mb-4"
-        >
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          Powrot do listy
+      <div className="flex items-center gap-4 mb-6">
+        <Link href="/payments">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            {t.common.back}
+          </Button>
         </Link>
-        <h1 className="text-3xl font-bold text-gray-900">Dodaj platnosc</h1>
-        <p className="text-gray-500 mt-1">Zarejestruj nowa platnosc od najemcy</p>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t.payments.addNew}</h1>
+          <p className="text-gray-500 text-sm">{t.dashboard.addPaymentDesc}</p>
+        </div>
       </div>
 
-      <form onSubmit={handleSubmit}>
-        {/* Payment Info */}
-        <Card className="p-6 mb-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <CreditCard className="h-5 w-5 text-blue-600" />
+      <Card className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
+              {error}
             </div>
-            <h2 className="text-lg font-semibold">Informacje o platnosci</h2>
-          </div>
+          )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2">
-              <Label htmlFor="tenantId">Najemca *</Label>
+          {/* Арендатор */}
+          <div className="space-y-4">
+            <h3 className="font-medium text-gray-900 flex items-center gap-2">
+              <CreditCard className="h-4 w-4" />
+              {t.forms.basicInfo}
+            </h3>
+
+            <div>
+              <Label htmlFor="tenantId">{t.payments.tenant} *</Label>
               <select
                 id="tenantId"
                 name="tenantId"
                 value={formData.tenantId}
                 onChange={handleChange}
                 required
-                className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                <option value="">-- Wybierz najemce --</option>
-                {mockTenants.map((tenant) => (
+                <option value="">{t.forms.selectOption}</option>
+                {tenants.map((tenant) => (
                   <option key={tenant.id} value={tenant.id}>
-                    {tenant.firstName} {tenant.lastName} ({tenant.property})
+                    {tenant.firstName} {tenant.lastName}
+                    {tenant.property && ` — ${tenant.property.name}`}
                   </option>
                 ))}
               </select>
+              {tenants.length === 0 && (
+                <p className="text-sm text-yellow-600 mt-1">
+                  Нет активных арендаторов. <Link href="/tenants/new" className="text-blue-600 underline">Добавьте арендатора</Link>
+                </p>
+              )}
             </div>
 
-            <div>
-              <Label htmlFor="type">Typ platnosci *</Label>
-              <select
-                id="type"
-                name="type"
-                value={formData.type}
-                onChange={handleChange}
-                required
-                className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="RENT">Czynsz</option>
-                <option value="UTILITIES">Media</option>
-                <option value="DEPOSIT">Kaucja</option>
-                <option value="OTHER">Inne</option>
-              </select>
-            </div>
-
-            <div>
-              <Label htmlFor="amount">Kwota (zl) *</Label>
-              <Input
-                id="amount"
-                name="amount"
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="3500"
-                value={formData.amount}
-                onChange={handleChange}
-                required
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="period">Okres (miesiac) *</Label>
-              <Input
-                id="period"
-                name="period"
-                type="month"
-                value={formData.period || currentPeriod}
-                onChange={handleChange}
-                required
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="dueDate">Termin platnosci *</Label>
-              <Input
-                id="dueDate"
-                name="dueDate"
-                type="date"
-                value={formData.dueDate}
-                onChange={handleChange}
-                required
-                className="mt-1"
-              />
-            </div>
-          </div>
-        </Card>
-
-        {/* Status */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-6">Status platnosci</h2>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <Label htmlFor="status">Status</Label>
-              <select
-                id="status"
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="PENDING">Oczekuje</option>
-                <option value="PAID">Zaplacono</option>
-                <option value="OVERDUE">Zalegla</option>
-              </select>
-            </div>
-
-            {formData.status === 'PAID' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="paidDate">Data zaplaty</Label>
-                <Input
-                  id="paidDate"
-                  name="paidDate"
-                  type="date"
-                  value={formData.paidDate}
+                <Label htmlFor="type">{t.payments.type} *</Label>
+                <select
+                  id="type"
+                  name="type"
+                  value={formData.type}
                   onChange={handleChange}
-                  className="mt-1"
+                  required
+                  className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="RENT">{t.payments.types.rent}</option>
+                  <option value="UTILITIES">{t.payments.types.utilities}</option>
+                  <option value="DEPOSIT">{t.payments.types.deposit}</option>
+                  <option value="OTHER">{t.payments.types.other}</option>
+                </select>
+              </div>
+
+              <div>
+                <Label htmlFor="amount">{t.payments.amount} ({t.common.currency}) *</Label>
+                <Input
+                  id="amount"
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  placeholder="3500"
+                  value={formData.amount}
+                  onChange={handleChange}
+                  required
                 />
               </div>
-            )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="period">{t.payments.period}</Label>
+                <Input
+                  id="period"
+                  name="period"
+                  type="month"
+                  value={formData.period}
+                  onChange={handleChange}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="dueDate">{t.payments.dueDate} *</Label>
+                <Input
+                  id="dueDate"
+                  name="dueDate"
+                  type="date"
+                  value={formData.dueDate}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
           </div>
-        </Card>
 
-        {/* Notes */}
-        <Card className="p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-6">Dodatkowe informacje</h2>
-
-          <div>
-            <Label htmlFor="notes">Notatki</Label>
+          {/* Заметки */}
+          <div className="space-y-2">
+            <Label htmlFor="notes">{t.forms.notes}</Label>
             <textarea
               id="notes"
               name="notes"
-              rows={3}
-              placeholder="Dodatkowe informacje o platnosci..."
+              rows={2}
+              placeholder="Дополнительная информация..."
               value={formData.notes}
               onChange={handleChange}
-              className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
-        </Card>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-4">
-          <Link href="/payments">
-            <Button type="button" variant="outline">
-              Anuluj
+          {/* Кнопки */}
+          <div className="flex gap-3 pt-4">
+            <Link href="/payments" className="flex-1">
+              <Button type="button" variant="outline" className="w-full">
+                {t.common.cancel}
+              </Button>
+            </Link>
+            <Button type="submit" className="flex-1" disabled={loading || tenants.length === 0}>
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {t.common.loading}
+                </>
+              ) : (
+                t.common.save
+              )}
             </Button>
-          </Link>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <span className="animate-spin mr-2">⏳</span>
-                Zapisywanie...
-              </>
-            ) : (
-              <>
-                <Save className="h-4 w-4 mr-2" />
-                Zapisz platnosc
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
+          </div>
+        </form>
+      </Card>
     </div>
   )
 }

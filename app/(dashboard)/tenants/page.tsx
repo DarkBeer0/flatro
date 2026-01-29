@@ -1,127 +1,118 @@
+// app/(dashboard)/tenants/page.tsx
+'use client'
+
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Plus, Users, Home, Phone, Mail, MoreHorizontal } from 'lucide-react'
+import { Plus, Users, Loader2, Trash2, Phone, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { useLocale } from '@/lib/i18n/context'
 
-// Временные данные
-const mockTenants = [
-  {
-    id: '1',
-    firstName: 'Jan',
-    lastName: 'Kowalski',
-    email: 'jan.kowalski@email.com',
-    phone: '+48 123 456 789',
-    isActive: true,
-    property: {
-      id: '1',
-      name: 'Mieszkanie Mokotow',
-      address: 'ul. Pulawska 123/45',
-    },
-    moveInDate: '2024-02-01',
-    rentAmount: 3500,
-  },
-  {
-    id: '2',
-    firstName: 'Anna',
-    lastName: 'Nowak',
-    email: 'anna.nowak@email.com',
-    phone: '+48 987 654 321',
-    isActive: true,
-    property: {
-      id: '3',
-      name: 'Mieszkanie Wola',
-      address: 'ul. Wolska 67/8',
-    },
-    moveInDate: '2023-06-15',
-    rentAmount: 4200,
-  },
-  {
-    id: '3',
-    firstName: 'Piotr',
-    lastName: 'Wisniewski',
-    email: 'piotr.w@email.com',
-    phone: '+48 555 666 777',
-    isActive: false,
-    property: null,
-    moveInDate: '2022-01-01',
-    moveOutDate: '2023-12-31',
-    rentAmount: 0,
-  },
-]
+interface Tenant {
+  id: string
+  firstName: string
+  lastName: string
+  email: string | null
+  phone: string | null
+  isActive: boolean
+  moveInDate: string | null
+  property: {
+    id: string
+    name: string
+    address: string
+  } | null
+}
 
 export default function TenantsPage() {
-  const tenants = mockTenants
+  const { t } = useLocale()
+  const [tenants, setTenants] = useState<Tenant[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetchTenants()
+  }, [])
+
+  async function fetchTenants() {
+    try {
+      const res = await fetch('/api/tenants')
+      if (res.ok) {
+        const data = await res.json()
+        setTenants(data)
+      }
+    } catch (error) {
+      console.error('Error fetching tenants:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm('Вы уверены что хотите удалить этого арендатора?')) return
+
+    try {
+      const res = await fetch(`/api/tenants/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setTenants(tenants.filter(t => t.id !== id))
+      }
+    } catch (error) {
+      console.error('Error deleting tenant:', error)
+    }
+  }
+
   const activeTenants = tenants.filter(t => t.isActive)
   const inactiveTenants = tenants.filter(t => !t.isActive)
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
 
   return (
     <div className="w-full">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Najemcy</h1>
-          <p className="text-gray-500 mt-1">Zarzadzaj najemcami swoich nieruchomosci</p>
+          <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.tenants.title}</h1>
+          <p className="text-gray-500 mt-1 text-sm lg:text-base">{t.tenants.subtitle}</p>
         </div>
         <Link href="/tenants/new">
-          <Button>
+          <Button className="w-full sm:w-auto">
             <Plus className="h-4 w-4 mr-2" />
-            Dodaj najemce
+            {t.tenants.addNew}
           </Button>
         </Link>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Users className="h-5 w-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{tenants.length}</p>
-              <p className="text-sm text-gray-500">Wszystkich</p>
-            </div>
-          </div>
+      <div className="grid grid-cols-3 gap-3 lg:gap-4 mb-6">
+        <Card className="p-3 lg:p-4 text-center">
+          <p className="text-2xl lg:text-3xl font-bold">{tenants.length}</p>
+          <p className="text-xs lg:text-sm text-gray-500">{t.tenants.total}</p>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <Users className="h-5 w-5 text-green-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{activeTenants.length}</p>
-              <p className="text-sm text-gray-500">Aktywnych</p>
-            </div>
-          </div>
+        <Card className="p-3 lg:p-4 text-center">
+          <p className="text-2xl lg:text-3xl font-bold text-green-600">{activeTenants.length}</p>
+          <p className="text-xs lg:text-sm text-gray-500">{t.tenants.active}</p>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-gray-100 rounded-lg">
-              <Users className="h-5 w-5 text-gray-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{inactiveTenants.length}</p>
-              <p className="text-sm text-gray-500">Byłych</p>
-            </div>
-          </div>
+        <Card className="p-3 lg:p-4 text-center">
+          <p className="text-2xl lg:text-3xl font-bold text-gray-400">{inactiveTenants.length}</p>
+          <p className="text-xs lg:text-sm text-gray-500">{t.tenants.former}</p>
         </Card>
       </div>
 
-      {/* Tenants List */}
+      {/* Tenant List */}
       {tenants.length === 0 ? (
-        <Card className="p-12 text-center">
+        <Card className="p-8 lg:p-12 text-center">
           <Users className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">
-            Brak najemcow
-          </h3>
-          <p className="text-gray-500 mb-4">
-            Dodaj pierwszego najemce, aby rozpoczac zarzadzanie
-          </p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">{t.tenants.noTenants}</h3>
+          <p className="text-gray-500 mb-4">{t.tenants.noTenantsDesc}</p>
           <Link href="/tenants/new">
             <Button>
               <Plus className="h-4 w-4 mr-2" />
-              Dodaj najemce
+              {t.tenants.addNew}
             </Button>
           </Link>
         </Card>
@@ -130,22 +121,32 @@ export default function TenantsPage() {
           {/* Active Tenants */}
           {activeTenants.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold mb-4">Aktywni najemcy</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <h2 className="text-lg font-semibold mb-3">{t.tenants.activeTenants}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {activeTenants.map((tenant) => (
-                  <TenantCard key={tenant.id} tenant={tenant} />
+                  <TenantCard 
+                    key={tenant.id} 
+                    tenant={tenant} 
+                    t={t} 
+                    onDelete={handleDelete} 
+                  />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Inactive Tenants */}
+          {/* Former Tenants */}
           {inactiveTenants.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold mb-4 text-gray-500">Byli najemcy</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <h2 className="text-lg font-semibold mb-3 text-gray-500">{t.tenants.formerTenants}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {inactiveTenants.map((tenant) => (
-                  <TenantCard key={tenant.id} tenant={tenant} />
+                  <TenantCard 
+                    key={tenant.id} 
+                    tenant={tenant} 
+                    t={t} 
+                    onDelete={handleDelete} 
+                  />
                 ))}
               </div>
             </div>
@@ -156,13 +157,13 @@ export default function TenantsPage() {
   )
 }
 
-function TenantCard({ tenant }: { tenant: typeof mockTenants[0] }) {
+function TenantCard({ tenant, t, onDelete }: { tenant: Tenant; t: any; onDelete: (id: string) => void }) {
   return (
-    <Card className={`p-5 ${!tenant.isActive ? 'opacity-60' : ''}`}>
-      <div className="flex items-start justify-between mb-4">
+    <Card className={`p-4 ${!tenant.isActive ? 'opacity-60' : ''}`}>
+      <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
-          <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
-            <span className="text-blue-600 font-semibold text-lg">
+          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+            <span className="text-blue-600 font-medium">
               {tenant.firstName[0]}{tenant.lastName[0]}
             </span>
           </div>
@@ -170,59 +171,52 @@ function TenantCard({ tenant }: { tenant: typeof mockTenants[0] }) {
             <h3 className="font-semibold text-gray-900">
               {tenant.firstName} {tenant.lastName}
             </h3>
-            <Badge className={tenant.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-              {tenant.isActive ? 'Aktywny' : 'Nieaktywny'}
+            <Badge className={tenant.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+              {tenant.isActive ? t.tenants.status.active : t.tenants.status.inactive}
             </Badge>
           </div>
         </div>
-        <Button variant="ghost" size="icon">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
       </div>
 
-      {/* Contact Info */}
-      <div className="space-y-2 mb-4">
-        <div className="flex items-center text-sm text-gray-600">
-          <Mail className="h-4 w-4 mr-2 text-gray-400" />
-          {tenant.email}
-        </div>
-        <div className="flex items-center text-sm text-gray-600">
-          <Phone className="h-4 w-4 mr-2 text-gray-400" />
-          {tenant.phone}
-        </div>
-      </div>
-
-      {/* Property */}
       {tenant.property ? (
-        <div className="p-3 bg-gray-50 rounded-lg mb-4">
-          <div className="flex items-center text-sm">
-            <Home className="h-4 w-4 mr-2 text-gray-400" />
-            <div>
-              <p className="font-medium text-gray-900">{tenant.property.name}</p>
-              <p className="text-gray-500">{tenant.property.address}</p>
-            </div>
+        <Link href={`/properties/${tenant.property.id}`} className="block mb-3">
+          <div className="text-sm text-gray-600 hover:text-blue-600">
+            📍 {tenant.property.name}
           </div>
-        </div>
+        </Link>
       ) : (
-        <div className="p-3 bg-gray-50 rounded-lg mb-4 text-center text-sm text-gray-500">
-          Brak przypisanej nieruchomosci
-        </div>
+        <p className="text-sm text-gray-400 mb-3">{t.tenants.noProperty}</p>
       )}
 
-      {/* Actions */}
+      <div className="space-y-1 text-sm text-gray-500 mb-3">
+        {tenant.phone && (
+          <div className="flex items-center gap-2">
+            <Phone className="h-3 w-3" />
+            {tenant.phone}
+          </div>
+        )}
+        {tenant.email && (
+          <div className="flex items-center gap-2">
+            <Mail className="h-3 w-3" />
+            {tenant.email}
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-2">
         <Link href={`/tenants/${tenant.id}`} className="flex-1">
-          <Button variant="outline" className="w-full">
-            Szczegoly
+          <Button variant="outline" size="sm" className="w-full">
+            {t.common.details}
           </Button>
         </Link>
-        {tenant.isActive && (
-          <Link href={`/payments/new?tenant=${tenant.id}`}>
-            <Button variant="outline">
-              Platnosc
-            </Button>
-          </Link>
-        )}
+        <Button 
+          variant="ghost" 
+          size="sm"
+          onClick={() => onDelete(tenant.id)}
+          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     </Card>
   )
