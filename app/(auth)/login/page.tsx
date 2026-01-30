@@ -15,6 +15,7 @@ function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteCode = searchParams.get('invite')
+  const errorParam = searchParams.get('error')
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,7 +27,18 @@ function LoginForm() {
     if (inviteCode) {
       localStorage.setItem('pendingInviteCode', inviteCode)
     }
-  }, [inviteCode])
+    
+    // Обработка ошибок из URL
+    if (errorParam) {
+      if (errorParam === 'account_not_found') {
+        setError('Аккаунт не найден. Возможно, вы ещё не зарегистрированы.')
+      } else if (errorParam === 'auth') {
+        setError('Ошибка авторизации. Попробуйте войти снова.')
+      } else {
+        setError(decodeURIComponent(errorParam))
+      }
+    }
+  }, [inviteCode, errorParam])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,13 +47,19 @@ function LoginForm() {
 
     const supabase = createClient()
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: signInError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
-    if (error) {
-      setError('Неверный email или пароль')
+    if (signInError) {
+      if (signInError.message.includes('Invalid login credentials')) {
+        setError('Неверный email или пароль')
+      } else if (signInError.message.includes('Email not confirmed')) {
+        setError('Email не подтверждён. Проверьте почту для подтверждения.')
+      } else {
+        setError(signInError.message)
+      }
       setLoading(false)
       return
     }
@@ -57,7 +75,14 @@ function LoginForm() {
         
         if (res.ok) {
           localStorage.removeItem('pendingInviteCode')
-          router.push('/tenant/dashboard')
+          const data = await res.json()
+          
+          // ИСПРАВЛЕНИЕ: Редирект в зависимости от роли пользователя
+          if (data.userRole === 'OWNER') {
+            router.push('/dashboard?invite_accepted=true')
+          } else {
+            router.push('/tenant/dashboard')
+          }
           router.refresh()
           return
         }
@@ -69,10 +94,20 @@ function LoginForm() {
     // Получаем роль и редиректим
     try {
       const res = await fetch('/api/auth/me')
+      
       if (res.ok) {
         const user = await res.json()
         router.push(user.role === 'TENANT' ? '/tenant/dashboard' : '/dashboard')
         router.refresh()
+        return
+      } else if (res.status === 404) {
+        // ИСПРАВЛЕНИЕ БАГ 1: Пользователь есть в Supabase, но нет в нашей БД
+        // Это не должно происходить, но на всякий случай обрабатываем
+        setError('Ошибка профиля. Попробуйте зарегистрироваться заново.')
+        
+        // Выходим из Supabase
+        await supabase.auth.signOut()
+        setLoading(false)
         return
       }
     } catch (err) {
@@ -105,8 +140,18 @@ function LoginForm() {
         <Card className="p-6">
           <form onSubmit={handleLogin} className="space-y-4">
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center gap-2 text-red-700 text-sm">
-                <AlertCircle className="h-4 w-4" />{error}
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2 text-red-700 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  {error}
+                  {error.includes('не зарегистрированы') && (
+                    <div className="mt-2">
+                      <Link href="/register" className="text-blue-600 hover:underline">
+                        Зарегистрироваться →
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

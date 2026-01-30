@@ -70,7 +70,7 @@ export async function GET(
   }
 }
 
-// POST /api/invitations/[code] - использовать приглашение (после регистрации)
+// POST /api/invitations/[code] - использовать приглашение (после регистрации/входа)
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
@@ -117,21 +117,58 @@ export async function POST(
       )
     }
 
-    // Транзакция: создаём пользователя, tenant, обновляем invitation
+    // Транзакция: создаём пользователя/tenant, обновляем invitation
     const result = await prisma.$transaction(async (tx) => {
-      // Создаём или обновляем пользователя с ролью TENANT
-      const user = await tx.user.upsert({
-        where: { id: authUser.id },
-        update: {
-          role: 'TENANT',
-        },
-        create: {
-          id: authUser.id,
-          email: authUser.email!,
-          name: authUser.user_metadata?.name || null,
-          role: 'TENANT',
+      // ИСПРАВЛЕНИЕ БАГ 3: Проверяем существующего пользователя и его роль
+      const existingUser = await tx.user.findUnique({
+        where: { id: authUser.id }
+      })
+
+      let user
+      let roleChanged = false
+
+      if (existingUser) {
+        // Пользователь уже существует
+        if (existingUser.role === 'OWNER') {
+          // OWNER остаётся OWNER - не меняем роль!
+          // Просто создаём связь как жилец этой квартиры
+          user = existingUser
+          roleChanged = false
+        } else {
+          // TENANT остаётся TENANT
+          user = existingUser
+          roleChanged = false
+        }
+      } else {
+        // Новый пользователь - создаём как TENANT
+        user = await tx.user.create({
+          data: {
+            id: authUser.id,
+            email: authUser.email!,
+            name: authUser.user_metadata?.name || null,
+            role: 'TENANT',
+          }
+        })
+        roleChanged = true
+      }
+
+      // Проверяем, не является ли пользователь уже жильцом этой квартиры
+      const existingTenant = await tx.tenant.findFirst({
+        where: {
+          tenantUserId: user.id,
+          propertyId: invitation.propertyId,
         }
       })
+
+      if (existingTenant) {
+        // Уже жилец этой квартиры
+        return { 
+          user, 
+          tenant: existingTenant, 
+          alreadyTenant: true,
+          roleChanged 
+        }
+      }
 
       // Создаём запись Tenant и привязываем к пользователю
       const tenant = await tx.tenant.create({
@@ -162,12 +199,16 @@ export async function POST(
         }
       })
 
-      return { user, tenant }
+      return { user, tenant, alreadyTenant: false, roleChanged }
     })
 
     return NextResponse.json({
       success: true,
       tenant: result.tenant,
+      alreadyTenant: result.alreadyTenant,
+      roleChanged: result.roleChanged,
+      // Сообщаем фронтенду о роли для правильного редиректа
+      userRole: result.user.role,
     })
   } catch (error) {
     console.error('Error using invitation:', error)

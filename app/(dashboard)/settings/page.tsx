@@ -1,9 +1,9 @@
 // app/(dashboard)/settings/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2 } from 'lucide-react'
+import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,17 @@ import { useLocale } from '@/lib/i18n/context'
 import { locales, localeNames, Locale } from '@/lib/i18n/dictionaries'
 import { createClient } from '@/lib/supabase/client'
 
+interface UserData {
+  id: string
+  email: string
+  name: string | null
+  phone: string | null
+  role: 'OWNER' | 'TENANT'
+  bankName: string | null
+  iban: string | null
+  accountHolder: string | null
+}
+
 export default function SettingsPage() {
   const router = useRouter()
   const { t, locale, setLocale } = useLocale()
@@ -19,14 +30,62 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  
+  // ИСПРАВЛЕНИЕ БАГ 4: Состояния для загрузки данных
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [userData, setUserData] = useState<UserData | null>(null)
 
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
-    company: '',
-    nip: '',
+    bankName: '',
+    iban: '',
+    accountHolder: '',
   })
+
+  // ИСПРАВЛЕНИЕ БАГ 4: Загрузка данных пользователя при монтировании
+  useEffect(() => {
+    loadUserData()
+  }, [])
+
+  const loadUserData = async () => {
+    setLoading(true)
+    setLoadError(null)
+
+    try {
+      const res = await fetch('/api/user')
+      
+      if (!res.ok) {
+        if (res.status === 404) {
+          setLoadError('Профиль не найден. Попробуйте войти заново.')
+        } else {
+          setLoadError('Не удалось загрузить данные профиля')
+        }
+        setLoading(false)
+        return
+      }
+
+      const data: UserData = await res.json()
+      setUserData(data)
+      
+      // Заполняем форму текущими данными
+      setFormData({
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        bankName: data.bankName || '',
+        iban: data.iban || '',
+        accountHolder: data.accountHolder || '',
+      })
+    } catch (error) {
+      console.error('Error loading user data:', error)
+      setLoadError('Ошибка подключения. Проверьте интернет-соединение.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value })
@@ -35,10 +94,37 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     setSaving(true)
-    // TODO: Save to API
-    await new Promise(resolve => setTimeout(resolve, 500))
-    setSaving(false)
-    setSaved(true)
+    
+    try {
+      const res = await fetch('/api/user', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          phone: formData.phone,
+          bankName: formData.bankName,
+          iban: formData.iban,
+          accountHolder: formData.accountHolder,
+        }),
+      })
+
+      if (res.ok) {
+        const updatedUser = await res.json()
+        setUserData(updatedUser)
+        setSaved(true)
+        
+        // Скрываем сообщение об успехе через 3 секунды
+        setTimeout(() => setSaved(false), 3000)
+      } else {
+        const error = await res.json()
+        alert(error.error || 'Не удалось сохранить изменения')
+      }
+    } catch (error) {
+      console.error('Error saving user data:', error)
+      alert('Ошибка сохранения. Попробуйте позже.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleLogout = async () => {
@@ -49,12 +135,50 @@ export default function SettingsPage() {
     router.refresh()
   }
 
+  // Маскирование email для отображения
+  const maskEmail = (email: string) => {
+    if (!email) return ''
+    const [local, domain] = email.split('@')
+    if (local.length <= 2) return email
+    return `${local.slice(0, 2)}${'*'.repeat(Math.min(local.length - 2, 5))}@${domain}`
+  }
+
   const tabs = [
     { id: 'profile', label: t.settings.profile, icon: User },
     { id: 'language', label: t.settings.language, icon: Globe },
+    // Показываем вкладку банковских реквизитов только для OWNER
+    ...(userData?.role === 'OWNER' ? [{ id: 'bank', label: 'Реквизиты', icon: CreditCard }] : []),
     { id: 'notifications', label: t.settings.notifications, icon: Bell },
     { id: 'security', label: t.settings.security, icon: Shield },
   ]
+
+  // Показываем загрузку
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    )
+  }
+
+  // Показываем ошибку загрузки
+  if (loadError) {
+    return (
+      <div className="w-full max-w-4xl mx-auto">
+        <Card className="p-6">
+          <div className="flex items-center gap-3 text-red-600 mb-4">
+            <AlertCircle className="h-6 w-6" />
+            <h2 className="text-lg font-semibold">Ошибка загрузки</h2>
+          </div>
+          <p className="text-gray-600 mb-4">{loadError}</p>
+          <div className="flex gap-3">
+            <Button onClick={loadUserData}>Попробовать снова</Button>
+            <Button variant="outline" onClick={handleLogout}>Выйти и войти заново</Button>
+          </div>
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full max-w-4xl mx-auto">
@@ -123,7 +247,7 @@ export default function SettingsPage() {
                       name="name"
                       value={formData.name}
                       onChange={handleChange}
-                      placeholder="Иван Петров"
+                      placeholder="Введите имя"
                     />
                   </div>
                   <div>
@@ -132,10 +256,13 @@ export default function SettingsPage() {
                       id="email"
                       name="email"
                       type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      placeholder="ivan@example.com"
+                      value={maskEmail(formData.email)}
+                      disabled
+                      className="bg-gray-50"
                     />
+                    <p className="text-xs text-gray-400 mt-1">
+                      Email нельзя изменить
+                    </p>
                   </div>
                   <div>
                     <Label htmlFor="phone">{t.settings.phone}</Label>
@@ -148,23 +275,11 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="company">{t.settings.company}</Label>
+                    <Label>Роль</Label>
                     <Input
-                      id="company"
-                      name="company"
-                      value={formData.company}
-                      onChange={handleChange}
-                      placeholder={t.settings.companyPlaceholder}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="nip">{t.settings.nip}</Label>
-                    <Input
-                      id="nip"
-                      name="nip"
-                      value={formData.nip}
-                      onChange={handleChange}
-                      placeholder="1234567890"
+                      value={userData?.role === 'OWNER' ? 'Владелец' : 'Жилец'}
+                      disabled
+                      className="bg-gray-50"
                     />
                   </div>
                 </div>
@@ -184,6 +299,68 @@ export default function SettingsPage() {
                     <span className="text-green-600 text-sm flex items-center gap-1">
                       <Check className="h-4 w-4" />
                       {t.settings.saved}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Bank Details Tab (только для OWNER) */}
+          {activeTab === 'bank' && userData?.role === 'OWNER' && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-1">Банковские реквизиты</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Эти данные будут показаны жильцам для оплаты аренды
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="bankName">Название банка</Label>
+                  <Input
+                    id="bankName"
+                    name="bankName"
+                    value={formData.bankName}
+                    onChange={handleChange}
+                    placeholder="PKO Bank Polski"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="iban">IBAN / Номер счёта</Label>
+                  <Input
+                    id="iban"
+                    name="iban"
+                    value={formData.iban}
+                    onChange={handleChange}
+                    placeholder="PL00 0000 0000 0000 0000 0000 0000"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="accountHolder">Получатель</Label>
+                  <Input
+                    id="accountHolder"
+                    name="accountHolder"
+                    value={formData.accountHolder}
+                    onChange={handleChange}
+                    placeholder="Имя Фамилия или название компании"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-4">
+                  <Button onClick={handleSave} disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Сохранение...
+                      </>
+                    ) : (
+                      'Сохранить реквизиты'
+                    )}
+                  </Button>
+                  {saved && (
+                    <span className="text-green-600 text-sm flex items-center gap-1">
+                      <Check className="h-4 w-4" />
+                      Сохранено!
                     </span>
                   )}
                 </div>

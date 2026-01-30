@@ -12,8 +12,8 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Найти или создать пользователя
-    let dbUser = await prisma.user.findUnique({
+    // ИСПРАВЛЕНИЕ БАГ 1: Только ищем пользователя, НЕ создаём автоматически
+    const dbUser = await prisma.user.findUnique({
       where: { id: authUser.id },
       include: {
         tenantProfile: {
@@ -26,24 +26,12 @@ export async function GET() {
       }
     })
 
+    // Если пользователя нет в БД - он не завершил регистрацию
     if (!dbUser) {
-      dbUser = await prisma.user.create({
-        data: {
-          id: authUser.id,
-          email: authUser.email!,
-          name: authUser.user_metadata?.name || null,
-          role: 'OWNER',
-        },
-        include: {
-          tenantProfile: {
-            include: {
-              property: {
-                select: { id: true, name: true, address: true }
-              }
-            }
-          }
-        }
-      })
+      return NextResponse.json({ 
+        error: 'User not found in database. Please complete registration.',
+        code: 'USER_NOT_REGISTERED'
+      }, { status: 404 })
     }
 
     return NextResponse.json({
@@ -52,6 +40,9 @@ export async function GET() {
       name: dbUser.name,
       phone: dbUser.phone,
       role: dbUser.role,
+      bankName: dbUser.bankName,
+      iban: dbUser.iban,
+      accountHolder: dbUser.accountHolder,
       tenantProfile: dbUser.tenantProfile,
     })
   } catch (error) {

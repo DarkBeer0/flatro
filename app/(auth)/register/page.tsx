@@ -1,16 +1,20 @@
 // app/(auth)/register/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
+import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordStrength, validatePassword } from '@/components/password-strength'
 import { createClient } from '@/lib/supabase/client'
+
+// Константы для таймера
+const RESEND_COOLDOWN_SECONDS = 60
+const MAX_RESEND_ATTEMPTS = 3
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -21,6 +25,23 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
+  
+  // ИСПРАВЛЕНИЕ БАГ 2: Состояния для повторной отправки
+  const [resending, setResending] = useState(false)
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resendAttempts, setResendAttempts] = useState(0)
+  const [resendError, setResendError] = useState<string | null>(null)
+  const [resendSuccess, setResendSuccess] = useState(false)
+
+  // Таймер обратного отсчёта
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(prev => prev - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendCooldown])
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -57,6 +78,8 @@ export default function RegisterPage() {
     if (error) {
       if (error.message.includes('already registered')) {
         setError('Этот email уже зарегистрирован')
+      } else if (error.message.includes('rate limit')) {
+        setError('Слишком много попыток. Подождите несколько минут.')
       } else {
         setError(error.message)
       }
@@ -65,7 +88,54 @@ export default function RegisterPage() {
     }
 
     setSuccess(true)
+    setResendCooldown(RESEND_COOLDOWN_SECONDS) // Запускаем таймер сразу после регистрации
     setLoading(false)
+  }
+
+  // ИСПРАВЛЕНИЕ БАГ 2: Функция повторной отправки письма
+  const handleResendEmail = useCallback(async () => {
+    if (resendCooldown > 0 || resending || resendAttempts >= MAX_RESEND_ATTEMPTS) {
+      return
+    }
+
+    setResending(true)
+    setResendError(null)
+    setResendSuccess(false)
+
+    const supabase = createClient()
+
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email,
+      })
+
+      if (error) {
+        if (error.message.includes('rate limit')) {
+          setResendError('Слишком много попыток. Подождите несколько минут.')
+        } else {
+          setResendError(error.message)
+        }
+      } else {
+        setResendSuccess(true)
+        setResendAttempts(prev => prev + 1)
+        setResendCooldown(RESEND_COOLDOWN_SECONDS)
+        
+        // Скрываем сообщение об успехе через 5 секунд
+        setTimeout(() => setResendSuccess(false), 5000)
+      }
+    } catch (err) {
+      setResendError('Не удалось отправить письмо. Попробуйте позже.')
+    } finally {
+      setResending(false)
+    }
+  }, [email, resendCooldown, resending, resendAttempts])
+
+  // Форматирование времени
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}с`
   }
 
   if (success) {
@@ -78,9 +148,70 @@ export default function RegisterPage() {
             <p className="text-gray-500 mb-4">
               Мы отправили ссылку для подтверждения на <strong>{email}</strong>
             </p>
-            <p className="text-sm text-yellow-600 mb-4">
-              ⚠️ Проверьте папку "Спам", если письмо не пришло
-            </p>
+            
+            {/* Предупреждение о спаме */}
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-yellow-700">
+                ⚠️ Проверьте папку <strong>"Спам"</strong> или <strong>"Нежелательная почта"</strong>, если письмо не пришло
+              </p>
+            </div>
+
+            {/* Кнопка повторной отправки */}
+            <div className="mb-4">
+              {resendAttempts >= MAX_RESEND_ATTEMPTS ? (
+                <p className="text-sm text-gray-500">
+                  Достигнут лимит повторных отправок. 
+                  <br />Если письмо не пришло, попробуйте позже или обратитесь в поддержку.
+                </p>
+              ) : (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={handleResendEmail}
+                    disabled={resendCooldown > 0 || resending}
+                    className="w-full mb-2"
+                  >
+                    {resending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Отправка...
+                      </>
+                    ) : resendCooldown > 0 ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Отправить повторно ({formatTime(resendCooldown)})
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Отправить письмо повторно
+                      </>
+                    )}
+                  </Button>
+                  
+                  {/* Счётчик попыток */}
+                  <p className="text-xs text-gray-400">
+                    Осталось попыток: {MAX_RESEND_ATTEMPTS - resendAttempts} из {MAX_RESEND_ATTEMPTS}
+                  </p>
+                </>
+              )}
+            </div>
+
+            {/* Сообщения об ошибке/успехе повторной отправки */}
+            {resendError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-red-700 text-sm">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                {resendError}
+              </div>
+            )}
+
+            {resendSuccess && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-green-700 text-sm">
+                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                Письмо отправлено повторно!
+              </div>
+            )}
+
             <Link href="/login">
               <Button variant="outline" className="w-full">
                 Вернуться к входу
