@@ -4,7 +4,7 @@
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Mail, Lock, Loader2, AlertCircle } from 'lucide-react'
+import { Building2, Mail, Lock, Loader2, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,29 +16,35 @@ function LoginForm() {
   const searchParams = useSearchParams()
   const inviteCode = searchParams.get('invite')
   const errorParam = searchParams.get('error')
+  const inviteAccepted = searchParams.get('invite_accepted')
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Сохраняем код приглашения если есть
     if (inviteCode) {
       localStorage.setItem('pendingInviteCode', inviteCode)
     }
     
-    // Обработка ошибок из URL
     if (errorParam) {
       if (errorParam === 'account_not_found') {
         setError('Аккаунт не найден. Возможно, вы ещё не зарегистрированы.')
       } else if (errorParam === 'auth') {
         setError('Ошибка авторизации. Попробуйте войти снова.')
+      } else if (errorParam === 'cannot_invite_self') {
+        setError('Вы не можете стать жильцом собственной квартиры.')
       } else {
         setError(decodeURIComponent(errorParam))
       }
     }
-  }, [inviteCode, errorParam])
+
+    if (inviteAccepted) {
+      setSuccess('Приглашение принято! Теперь у вас есть доступ к новой квартире.')
+    }
+  }, [inviteCode, errorParam, inviteAccepted])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -77,35 +83,47 @@ function LoginForm() {
           localStorage.removeItem('pendingInviteCode')
           const data = await res.json()
           
-          // ИСПРАВЛЕНИЕ: Редирект в зависимости от роли пользователя
-          if (data.userRole === 'OWNER') {
+          // Редирект в зависимости от ролей пользователя
+          if (data.isOwner) {
             router.push('/dashboard?invite_accepted=true')
           } else {
             router.push('/tenant/dashboard')
           }
           router.refresh()
           return
+        } else {
+          const errData = await res.json()
+          if (errData.error?.includes('собственной квартиры')) {
+            setError('Вы не можете стать жильцом собственной квартиры.')
+            setLoading(false)
+            return
+          }
         }
       } catch (err) {
         console.error('Error activating invitation:', err)
       }
     }
 
-    // Получаем роль и редиректим
+    // Получаем информацию о пользователе
     try {
       const res = await fetch('/api/auth/me')
       
       if (res.ok) {
         const user = await res.json()
-        router.push(user.role === 'TENANT' ? '/tenant/dashboard' : '/dashboard')
+        
+        // Если есть обе роли - идём в dashboard владельца
+        if (user.isOwner) {
+          router.push('/dashboard')
+        } else if (user.isTenant) {
+          router.push('/tenant/dashboard')
+        } else {
+          // Fallback
+          router.push('/dashboard')
+        }
         router.refresh()
         return
       } else if (res.status === 404) {
-        // ИСПРАВЛЕНИЕ БАГ 1: Пользователь есть в Supabase, но нет в нашей БД
-        // Это не должно происходить, но на всякий случай обрабатываем
         setError('Ошибка профиля. Попробуйте зарегистрироваться заново.')
-        
-        // Выходим из Supabase
         await supabase.auth.signOut()
         setLoading(false)
         return
@@ -134,6 +152,15 @@ function LoginForm() {
             <p className="text-sm text-green-700 text-center">
               🏠 Войдите чтобы принять приглашение
             </p>
+          </Card>
+        )}
+
+        {success && (
+          <Card className="p-4 mb-4 bg-green-50 border-green-200">
+            <div className="flex items-center gap-2 text-green-700 text-sm">
+              <CheckCircle className="h-4 w-4" />
+              {success}
+            </div>
           </Card>
         )}
 

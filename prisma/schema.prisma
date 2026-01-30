@@ -1,3 +1,7 @@
+// prisma/schema.prisma
+// Flatro — Полная актуальная схема БД
+// Обновлено: добавлены индексы, множественные роли, constraints
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -14,9 +18,12 @@ model User {
   email     String   @unique
   name      String?
   phone     String?
-  role      UserRole @default(OWNER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // НОВОЕ: Множественные роли (вместо одной роли)
+  isOwner  Boolean @default(false)  // Может добавлять квартиры
+  isTenant Boolean @default(false)  // Может быть жильцом
 
   // Банковские реквизиты (для владельцев)
   bankName      String?
@@ -33,7 +40,7 @@ model User {
   payments   Payment[]
 
   // Связь для TENANT (жилец привязан к Tenant записи)
-  tenantProfile Tenant?   @relation("TenantUser")
+  tenantProfile Tenant? @relation("TenantUser")
 
   // Сообщения
   sentMessages     Message[] @relation("SentMessages")
@@ -48,10 +55,7 @@ model User {
   @@map("users")
 }
 
-enum UserRole {
-  OWNER
-  TENANT
-}
+// УДАЛЕНО: enum UserRole - теперь используем isOwner/isTenant
 
 // ============== ПРИГЛАШЕНИЯ ==============
 
@@ -68,13 +72,16 @@ model Invitation {
   // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
+  // Индексы для производительности
+  @@index([expiresAt])
+  @@index([propertyId, usedAt])
   @@map("invitations")
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
 
 model Property {
-  id          String   @id @default(uuid())
+  id          String         @id @default(uuid())
   userId      String
   name        String
   address     String
@@ -85,20 +92,22 @@ model Property {
   floor       Int?
   description String?
   status      PropertyStatus @default(VACANT)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   // Связи
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenants      Tenant[]
-  meters       Meter[]
-  contracts    Contract[]
-  invitations  Invitation[]
-  messages     Message[]
-  tickets      Ticket[]
-  announcements Announcement[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenants          Tenant[]
+  meters           Meter[]
+  contracts        Contract[]
+  invitations      Invitation[]
+  messages         Message[]
+  tickets          Ticket[]
+  announcements    Announcement[]
   paymentTemplates PaymentTemplate[]
 
+  // Индекс для запросов владельца
+  @@index([userId, status])
   @@map("properties")
 }
 
@@ -111,10 +120,10 @@ enum PropertyStatus {
 // ============== ЖИЛЬЦЫ ==============
 
 model Tenant {
-  id           String   @id @default(uuid())
-  userId       String   // Владелец, который добавил жильца
+  id           String    @id @default(uuid())
+  userId       String    // Владелец, который добавил жильца
   propertyId   String?
-  tenantUserId String?  @unique // Аккаунт жильца (если зарегистрировался)
+  tenantUserId String?   @unique // Аккаунт жильца (если зарегистрировался)
   firstName    String
   lastName     String
   email        String?
@@ -122,9 +131,9 @@ model Tenant {
   pesel        String?
   moveInDate   DateTime?
   moveOutDate  DateTime?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Связи
   user          User      @relation("OwnerTenants", fields: [userId], references: [id], onDelete: Cascade)
@@ -134,30 +143,37 @@ model Tenant {
   contracts     Contract[]
   meterReadings MeterReading[]
 
+  // Индексы
+  @@index([email])
+  @@index([userId, isActive])
+  @@index([tenantUserId])
   @@map("tenants")
 }
 
 // ============== ДОГОВОРЫ ==============
 
 model Contract {
-  id            String   @id @default(uuid())
+  id            String         @id @default(uuid())
   propertyId    String
   tenantId      String
-  type          ContractType @default(STANDARD)
+  type          ContractType   @default(STANDARD)
   startDate     DateTime
   endDate       DateTime?
   rentAmount    Float
   depositAmount Float?
-  paymentDay    Int      @default(10)
+  paymentDay    Int            @default(10) // 1-28
   status        ContractStatus @default(ACTIVE)
   notes         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Индексы
+  @@index([status, endDate])
+  @@index([propertyId, status])
   @@map("contracts")
 }
 
@@ -177,8 +193,8 @@ enum ContractStatus {
 // ============== ПЛАТЕЖИ ==============
 
 model Payment {
-  id          String   @id @default(uuid())
-  userId      String   // Владелец
+  id          String        @id @default(uuid())
+  userId      String        // Владелец
   tenantId    String
   amount      Float
   type        PaymentType
@@ -195,7 +211,7 @@ model Payment {
   rejectionReason String?   // Причина отклонения
 
   // Stripe
-  stripePaymentId String?   // ID платежа в Stripe
+  stripePaymentId String? // ID платежа в Stripe
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -204,6 +220,10 @@ model Payment {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  // Индексы
+  @@index([status, dueDate])
+  @@index([tenantId, status])
+  @@index([userId, createdAt])
   @@map("payments")
 }
 
@@ -223,19 +243,19 @@ enum PaymentStatus {
   CANCELLED            // Отменено
 }
 
-// ============== ШАБЛОНЫ ПЛАТЕЖЕЙ (для автоматического создания) ==============
+// ============== ШАБЛОНЫ ПЛАТЕЖЕЙ ==============
 
 model PaymentTemplate {
-  id          String   @id @default(uuid())
-  propertyId  String
-  tenantId    String
-  amount      Float
-  type        PaymentType
-  dayOfMonth  Int      @default(1)  // День создания платежа
-  dueDayOfMonth Int    @default(10) // День оплаты
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String      @id @default(uuid())
+  propertyId    String
+  tenantId      String
+  amount        Float
+  type          PaymentType
+  dayOfMonth    Int         @default(1)  // День создания платежа
+  dueDayOfMonth Int         @default(10) // День оплаты
+  isActive      Boolean     @default(true)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -246,39 +266,42 @@ model PaymentTemplate {
 // ============== СООБЩЕНИЯ ==============
 
 model Message {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   senderId   String
   receiverId String
-  propertyId String   // Контекст - к какой квартире относится
+  propertyId String    // Контекст - к какой квартире относится
   content    String
-  isRead     Boolean  @default(false)
+  isRead     Boolean   @default(false)
   readAt     DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   // Связи
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
+  // Индексы
+  @@index([receiverId, isRead])
+  @@index([propertyId, createdAt])
   @@map("messages")
 }
 
 // ============== ЗАЯВКИ (ТИКЕТЫ) ==============
 
 model Ticket {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   propertyId  String
-  createdById String   // Кто создал (жилец)
+  createdById String       // Кто создал (жилец)
   title       String
   description String
   status      TicketStatus @default(NEW)
-  photos      String[] // URLs фотографий
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  photos      String[]     // URLs фотографий
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   // Связи
-  property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  property  Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
   comments  TicketComment[]
 
   @@map("tickets")
@@ -307,15 +330,15 @@ model TicketComment {
 // ============== ОБЪЯВЛЕНИЯ ==============
 
 model Announcement {
-  id         String    @id @default(uuid())
-  propertyId String
-  createdById String   // Владелец
-  title      String
-  content    String
-  eventDate  DateTime? // Дата события (если есть)
-  isActive   Boolean   @default(true)
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id          String    @id @default(uuid())
+  propertyId  String
+  createdById String    // Владелец
+  title       String
+  content     String
+  eventDate   DateTime? // Дата события (если есть)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Связи
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -327,14 +350,14 @@ model Announcement {
 // ============== СЧЁТЧИКИ (MEDIA) ==============
 
 model Meter {
-  id          String    @id @default(uuid())
-  propertyId  String
-  type        MeterType
-  meterNumber String?
-  unit        String
+  id           String         @id @default(uuid())
+  propertyId   String
+  type         MeterType
+  meterNumber  String?
+  unit         String
   pricePerUnit Float?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
 
   // Связи
   property Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
@@ -352,13 +375,13 @@ enum MeterType {
 }
 
 model MeterReading {
-  id        String   @id @default(uuid())
-  meterId   String
-  tenantId  String?
-  value     Float
+  id          String   @id @default(uuid())
+  meterId     String
+  tenantId    String?
+  value       Float
   readingDate DateTime
-  photoUrl  String?
-  createdAt DateTime @default(now())
+  photoUrl    String?
+  createdAt   DateTime @default(now())
 
   // Связи
   meter  Meter   @relation(fields: [meterId], references: [id], onDelete: Cascade)

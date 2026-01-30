@@ -13,7 +13,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // ИСПРАВЛЕНИЕ БАГ 1: Только ищем, НЕ создаём
+    // Только ищем, НЕ создаём
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
@@ -21,7 +21,8 @@ export async function GET() {
         email: true,
         name: true,
         phone: true,
-        role: true,
+        isOwner: true,
+        isTenant: true,
         bankName: true,
         iban: true,
         accountHolder: true,
@@ -37,7 +38,13 @@ export async function GET() {
       }, { status: 404 })
     }
 
-    return NextResponse.json(dbUser)
+    // Вычисляем role для совместимости
+    const role = dbUser.isOwner ? 'OWNER' : (dbUser.isTenant ? 'TENANT' : 'OWNER')
+
+    return NextResponse.json({
+      ...dbUser,
+      role, // Для совместимости
+    })
   } catch (error) {
     console.error('Error getting user:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
@@ -74,8 +81,8 @@ export async function PUT(request: Request) {
       data: { 
         name, 
         phone,
-        // Банковские реквизиты (только для OWNER)
-        ...(existingUser.role === 'OWNER' && {
+        // Банковские реквизиты (только для владельцев)
+        ...(existingUser.isOwner && {
           bankName,
           iban,
           accountHolder,
@@ -86,7 +93,8 @@ export async function PUT(request: Request) {
         email: true,
         name: true,
         phone: true,
-        role: true,
+        isOwner: true,
+        isTenant: true,
         bankName: true,
         iban: true,
         accountHolder: true,
@@ -94,7 +102,12 @@ export async function PUT(request: Request) {
       }
     })
 
-    return NextResponse.json(dbUser)
+    const role = dbUser.isOwner ? 'OWNER' : (dbUser.isTenant ? 'TENANT' : 'OWNER')
+
+    return NextResponse.json({
+      ...dbUser,
+      role,
+    })
   } catch (error) {
     console.error('Error updating user:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

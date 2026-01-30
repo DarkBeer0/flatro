@@ -22,6 +22,7 @@ export async function GET(
             city: true,
             rooms: true,
             area: true,
+            userId: true, // Нужно для проверки
             user: {
               select: {
                 name: true,
@@ -39,7 +40,6 @@ export async function GET(
       )
     }
 
-    // Проверяем срок действия
     if (new Date() > invitation.expiresAt) {
       return NextResponse.json(
         { error: 'Invitation expired', code: 'EXPIRED' },
@@ -47,7 +47,6 @@ export async function GET(
       )
     }
 
-    // Проверяем не использовано ли уже
     if (invitation.usedAt) {
       return NextResponse.json(
         { error: 'Invitation already used', code: 'ALREADY_USED' },
@@ -57,7 +56,15 @@ export async function GET(
 
     return NextResponse.json({
       id: invitation.id,
-      property: invitation.property,
+      property: {
+        id: invitation.property.id,
+        name: invitation.property.name,
+        address: invitation.property.address,
+        city: invitation.property.city,
+        rooms: invitation.property.rooms,
+        area: invitation.property.area,
+        user: invitation.property.user,
+      },
       email: invitation.email,
       expiresAt: invitation.expiresAt,
     })
@@ -70,7 +77,7 @@ export async function GET(
   }
 }
 
-// POST /api/invitations/[code] - использовать приглашение (после регистрации/входа)
+// POST /api/invitations/[code] - использовать приглашение
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
@@ -78,7 +85,6 @@ export async function POST(
   try {
     const { code } = await params
     
-    // Получаем текущего пользователя
     const supabase = await createClient()
     const { data: { user: authUser } } = await supabase.auth.getUser()
 
@@ -117,42 +123,46 @@ export async function POST(
       )
     }
 
-    // Транзакция: создаём пользователя/tenant, обновляем invitation
+    // ВАЖНО: Пользователь не может быть жильцом своей квартиры
+    if (invitation.property.userId === authUser.id) {
+      return NextResponse.json(
+        { error: 'Вы не можете стать жильцом собственной квартиры' },
+        { status: 400 }
+      )
+    }
+
     const result = await prisma.$transaction(async (tx) => {
-      // ИСПРАВЛЕНИЕ БАГ 3: Проверяем существующего пользователя и его роль
+      // Проверяем существующего пользователя
       const existingUser = await tx.user.findUnique({
         where: { id: authUser.id }
       })
 
       let user
-      let roleChanged = false
 
       if (existingUser) {
-        // Пользователь уже существует
-        if (existingUser.role === 'OWNER') {
-          // OWNER остаётся OWNER - не меняем роль!
-          // Просто создаём связь как жилец этой квартиры
-          user = existingUser
-          roleChanged = false
+        // Добавляем роль жильца если её нет
+        if (!existingUser.isTenant) {
+          user = await tx.user.update({
+            where: { id: authUser.id },
+            data: { isTenant: true }
+          })
         } else {
-          // TENANT остаётся TENANT
           user = existingUser
-          roleChanged = false
         }
       } else {
-        // Новый пользователь - создаём как TENANT
+        // Новый пользователь - создаём как жильца
         user = await tx.user.create({
           data: {
             id: authUser.id,
             email: authUser.email!,
             name: authUser.user_metadata?.name || null,
-            role: 'TENANT',
+            isOwner: false,
+            isTenant: true,
           }
         })
-        roleChanged = true
       }
 
-      // Проверяем, не является ли пользователь уже жильцом этой квартиры
+      // Проверяем, не является ли уже жильцом этой квартиры
       const existingTenant = await tx.tenant.findFirst({
         where: {
           tenantUserId: user.id,
@@ -161,21 +171,19 @@ export async function POST(
       })
 
       if (existingTenant) {
-        // Уже жилец этой квартиры
         return { 
           user, 
           tenant: existingTenant, 
           alreadyTenant: true,
-          roleChanged 
         }
       }
 
-      // Создаём запись Tenant и привязываем к пользователю
+      // Создаём запись Tenant
       const tenant = await tx.tenant.create({
         data: {
-          userId: invitation.property.userId, // Владелец
+          userId: invitation.property.userId,
           propertyId: invitation.propertyId,
-          tenantUserId: user.id, // Привязка к аккаунту жильца
+          tenantUserId: user.id,
           firstName: authUser.user_metadata?.name?.split(' ')[0] || 'Имя',
           lastName: authUser.user_metadata?.name?.split(' ').slice(1).join(' ') || 'Фамилия',
           email: authUser.email,
@@ -184,13 +192,11 @@ export async function POST(
         }
       })
 
-      // Обновляем статус квартиры
       await tx.property.update({
         where: { id: invitation.propertyId },
         data: { status: 'OCCUPIED' }
       })
 
-      // Отмечаем приглашение использованным
       await tx.invitation.update({
         where: { id: invitation.id },
         data: {
@@ -199,16 +205,15 @@ export async function POST(
         }
       })
 
-      return { user, tenant, alreadyTenant: false, roleChanged }
+      return { user, tenant, alreadyTenant: false }
     })
 
     return NextResponse.json({
       success: true,
       tenant: result.tenant,
       alreadyTenant: result.alreadyTenant,
-      roleChanged: result.roleChanged,
-      // Сообщаем фронтенду о роли для правильного редиректа
-      userRole: result.user.role,
+      isOwner: result.user.isOwner,
+      isTenant: result.user.isTenant,
     })
   } catch (error) {
     console.error('Error using invitation:', error)
@@ -234,7 +239,6 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Проверяем что приглашение принадлежит владельцу
     const invitation = await prisma.invitation.findFirst({
       where: {
         code,

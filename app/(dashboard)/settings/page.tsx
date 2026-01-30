@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2, AlertCircle } from 'lucide-react'
+import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2, AlertCircle, Home, Users, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -17,10 +17,20 @@ interface UserData {
   email: string
   name: string | null
   phone: string | null
-  role: 'OWNER' | 'TENANT'
+  isOwner: boolean
+  isTenant: boolean
   bankName: string | null
   iban: string | null
   accountHolder: string | null
+}
+
+interface RolesInfo {
+  isOwner: boolean
+  isTenant: boolean
+  canDisableOwner: boolean
+  canDisableTenant: boolean
+  ownedPropertiesCount: number
+  hasActiveTenancy: boolean
 }
 
 export default function SettingsPage() {
@@ -31,10 +41,15 @@ export default function SettingsPage() {
   const [saved, setSaved] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   
-  // ИСПРАВЛЕНИЕ БАГ 4: Состояния для загрузки данных
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [userData, setUserData] = useState<UserData | null>(null)
+  
+  // Состояния для управления ролями
+  const [rolesInfo, setRolesInfo] = useState<RolesInfo | null>(null)
+  const [rolesLoading, setRolesLoading] = useState(false)
+  const [rolesError, setRolesError] = useState<string | null>(null)
+  const [rolesSaving, setRolesSaving] = useState(false)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -45,9 +60,9 @@ export default function SettingsPage() {
     accountHolder: '',
   })
 
-  // ИСПРАВЛЕНИЕ БАГ 4: Загрузка данных пользователя при монтировании
   useEffect(() => {
     loadUserData()
+    loadRolesInfo()
   }, [])
 
   const loadUserData = async () => {
@@ -70,7 +85,6 @@ export default function SettingsPage() {
       const data: UserData = await res.json()
       setUserData(data)
       
-      // Заполняем форму текущими данными
       setFormData({
         name: data.name || '',
         email: data.email || '',
@@ -84,6 +98,23 @@ export default function SettingsPage() {
       setLoadError('Ошибка подключения. Проверьте интернет-соединение.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadRolesInfo = async () => {
+    setRolesLoading(true)
+    setRolesError(null)
+
+    try {
+      const res = await fetch('/api/user/roles')
+      if (res.ok) {
+        const data = await res.json()
+        setRolesInfo(data)
+      }
+    } catch (error) {
+      console.error('Error loading roles info:', error)
+    } finally {
+      setRolesLoading(false)
     }
   }
 
@@ -112,8 +143,6 @@ export default function SettingsPage() {
         const updatedUser = await res.json()
         setUserData(updatedUser)
         setSaved(true)
-        
-        // Скрываем сообщение об успехе через 3 секунды
         setTimeout(() => setSaved(false), 3000)
       } else {
         const error = await res.json()
@@ -127,6 +156,69 @@ export default function SettingsPage() {
     }
   }
 
+  // Переключение роли
+  const handleToggleRole = async (role: 'owner' | 'tenant', enable: boolean) => {
+    if (!rolesInfo) return
+
+    // Проверка: нельзя отключить обе роли
+    if (!enable) {
+      if (role === 'owner' && !rolesInfo.isTenant) {
+        setRolesError('Нельзя отключить единственную активную роль')
+        return
+      }
+      if (role === 'tenant' && !rolesInfo.isOwner) {
+        setRolesError('Нельзя отключить единственную активную роль')
+        return
+      }
+    }
+
+    setRolesSaving(true)
+    setRolesError(null)
+
+    try {
+      const res = await fetch('/api/user/roles', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enableOwner: role === 'owner' ? enable : undefined,
+          enableTenant: role === 'tenant' ? enable : undefined,
+        }),
+      })
+
+      const data = await res.json()
+
+      if (res.ok) {
+        // Обновляем состояние
+        setRolesInfo(prev => prev ? {
+          ...prev,
+          isOwner: data.isOwner,
+          isTenant: data.isTenant,
+        } : null)
+        
+        setUserData(prev => prev ? {
+          ...prev,
+          isOwner: data.isOwner,
+          isTenant: data.isTenant,
+        } : null)
+
+        // Если отключили текущий режим, возможно нужен редирект
+        if (role === 'owner' && !enable && !data.isTenant) {
+          // Это не должно произойти, но на всякий случай
+          router.push('/tenant/dashboard')
+        }
+      } else {
+        setRolesError(data.error || 'Не удалось изменить роль')
+      }
+    } catch (error) {
+      console.error('Error toggling role:', error)
+      setRolesError('Ошибка сети. Попробуйте позже.')
+    } finally {
+      setRolesSaving(false)
+      // Перезагружаем информацию о ролях
+      loadRolesInfo()
+    }
+  }
+
   const handleLogout = async () => {
     setLoggingOut(true)
     const supabase = createClient()
@@ -135,7 +227,6 @@ export default function SettingsPage() {
     router.refresh()
   }
 
-  // Маскирование email для отображения
   const maskEmail = (email: string) => {
     if (!email) return ''
     const [local, domain] = email.split('@')
@@ -145,14 +236,13 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'profile', label: t.settings.profile, icon: User },
+    { id: 'roles', label: 'Роли', icon: Users },
     { id: 'language', label: t.settings.language, icon: Globe },
-    // Показываем вкладку банковских реквизитов только для OWNER
-    ...(userData?.role === 'OWNER' ? [{ id: 'bank', label: 'Реквизиты', icon: CreditCard }] : []),
+    ...(userData?.isOwner ? [{ id: 'bank', label: 'Реквизиты', icon: CreditCard }] : []),
     { id: 'notifications', label: t.settings.notifications, icon: Bell },
     { id: 'security', label: t.settings.security, icon: Shield },
   ]
 
-  // Показываем загрузку
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -161,7 +251,6 @@ export default function SettingsPage() {
     )
   }
 
-  // Показываем ошибку загрузки
   if (loadError) {
     return (
       <div className="w-full max-w-4xl mx-auto">
@@ -182,14 +271,13 @@ export default function SettingsPage() {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.settings.title}</h1>
         <p className="text-gray-500 mt-1">{t.settings.subtitle}</p>
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar Navigation */}
+        {/* Sidebar */}
         <div className="lg:w-64 flex-shrink-0">
           <Card className="p-2">
             <nav className="space-y-1">
@@ -211,7 +299,6 @@ export default function SettingsPage() {
                 )
               })}
               
-              {/* Logout button */}
               <div className="pt-2 mt-2 border-t">
                 <button
                   onClick={handleLogout}
@@ -254,15 +341,11 @@ export default function SettingsPage() {
                     <Label htmlFor="email">{t.settings.email}</Label>
                     <Input
                       id="email"
-                      name="email"
-                      type="email"
                       value={maskEmail(formData.email)}
                       disabled
                       className="bg-gray-50"
                     />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Email нельзя изменить
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Email нельзя изменить</p>
                   </div>
                   <div>
                     <Label htmlFor="phone">{t.settings.phone}</Label>
@@ -275,12 +358,19 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label>Роль</Label>
-                    <Input
-                      value={userData?.role === 'OWNER' ? 'Владелец' : 'Жилец'}
-                      disabled
-                      className="bg-gray-50"
-                    />
+                    <Label>Активные роли</Label>
+                    <div className="flex gap-2 mt-1">
+                      {userData?.isOwner && (
+                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
+                          Владелец
+                        </span>
+                      )}
+                      {userData?.isTenant && (
+                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
+                          Жилец
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -306,8 +396,142 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {/* Bank Details Tab (только для OWNER) */}
-          {activeTab === 'bank' && userData?.role === 'OWNER' && (
+          {/* Roles Tab - НОВАЯ ВКЛАДКА */}
+          {activeTab === 'roles' && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold mb-1">Управление ролями</h2>
+              <p className="text-sm text-gray-500 mb-6">
+                Настройте какие функции вам доступны в системе
+              </p>
+
+              {rolesError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-red-700 text-sm">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  {rolesError}
+                </div>
+              )}
+
+              {rolesLoading ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+                </div>
+              ) : rolesInfo && (
+                <div className="space-y-4">
+                  {/* Роль владельца */}
+                  <div className={`p-4 rounded-lg border-2 ${rolesInfo.isOwner ? 'border-blue-200 bg-blue-50' : 'border-gray-200'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${rolesInfo.isOwner ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                          <Home className={`h-5 w-5 ${rolesInfo.isOwner ? 'text-blue-600' : 'text-gray-400'}`} />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">Режим владельца</h3>
+                          <p className="text-sm text-gray-500">
+                            Добавляйте квартиры, приглашайте жильцов, управляйте платежами
+                          </p>
+                          {rolesInfo.isOwner && rolesInfo.ownedPropertiesCount > 0 && (
+                            <p className="text-xs text-blue-600 mt-1">
+                              У вас {rolesInfo.ownedPropertiesCount} объект(ов) недвижимости
+                            </p>
+                          )}
+                          {!rolesInfo.canDisableOwner && rolesInfo.isOwner && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ Нельзя отключить — есть активные квартиры
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)}
+                        disabled={rolesSaving || (rolesInfo.isOwner && !rolesInfo.canDisableOwner) || (!rolesInfo.isOwner && !rolesInfo.isTenant)}
+                        className="flex-shrink-0"
+                      >
+                        {rolesInfo.isOwner ? (
+                          <ToggleRight className={`h-8 w-8 ${rolesInfo.canDisableOwner ? 'text-blue-600' : 'text-gray-300'}`} />
+                        ) : (
+                          <ToggleLeft className="h-8 w-8 text-gray-300 hover:text-blue-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Роль жильца */}
+                  <div className={`p-4 rounded-lg border-2 ${rolesInfo.isTenant ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${rolesInfo.isTenant ? 'bg-green-100' : 'bg-gray-100'}`}>
+                          <Users className={`h-5 w-5 ${rolesInfo.isTenant ? 'text-green-600' : 'text-gray-400'}`} />
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">Режим жильца</h3>
+                          <p className="text-sm text-gray-500">
+                            Просматривайте платежи, общайтесь с владельцем, создавайте заявки
+                          </p>
+                          {rolesInfo.hasActiveTenancy && (
+                            <p className="text-xs text-green-600 mt-1">
+                              Вы арендуете квартиру
+                            </p>
+                          )}
+                          {!rolesInfo.canDisableTenant && rolesInfo.isTenant && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ Нельзя отключить — есть активная аренда
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)}
+                        disabled={rolesSaving || (rolesInfo.isTenant && !rolesInfo.canDisableTenant) || (!rolesInfo.isTenant && !rolesInfo.isOwner)}
+                        className="flex-shrink-0"
+                      >
+                        {rolesInfo.isTenant ? (
+                          <ToggleRight className={`h-8 w-8 ${rolesInfo.canDisableTenant ? 'text-green-600' : 'text-gray-300'}`} />
+                        ) : (
+                          <ToggleLeft className="h-8 w-8 text-gray-300 hover:text-green-400" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Подсказка */}
+                  <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+                    <p className="font-medium mb-2">💡 Как это работает:</p>
+                    <ul className="list-disc list-inside space-y-1">
+                      <li>Вы можете включить <strong>обе роли</strong> одновременно</li>
+                      <li>Нельзя отключить роль владельца если у вас есть квартиры</li>
+                      <li>Нельзя отключить роль жильца если вы активно арендуете</li>
+                      <li>Должна быть хотя бы одна активная роль</li>
+                    </ul>
+                  </div>
+
+                  {/* Кнопки быстрого перехода */}
+                  {rolesInfo.isOwner && rolesInfo.isTenant && (
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push('/dashboard')}
+                        className="flex-1"
+                      >
+                        <Home className="h-4 w-4 mr-2" />
+                        Панель владельца
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => router.push('/tenant/dashboard')}
+                        className="flex-1"
+                      >
+                        <Users className="h-4 w-4 mr-2" />
+                        Панель жильца
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Bank Details Tab */}
+          {activeTab === 'bank' && userData?.isOwner && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Банковские реквизиты</h2>
               <p className="text-sm text-gray-500 mb-6">

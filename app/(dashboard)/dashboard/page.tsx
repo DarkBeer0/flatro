@@ -2,9 +2,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
-import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2 } from 'lucide-react'
+import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
 
@@ -18,9 +18,23 @@ interface DashboardStats {
 
 export default function DashboardPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const inviteAccepted = searchParams.get('invite_accepted')
+  
   const { t } = useLocale()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [showInviteSuccess, setShowInviteSuccess] = useState(false)
+
+  useEffect(() => {
+    if (inviteAccepted) {
+      setShowInviteSuccess(true)
+      // Убираем параметр из URL
+      router.replace('/dashboard', { scroll: false })
+      // Скрываем сообщение через 5 секунд
+      setTimeout(() => setShowInviteSuccess(false), 5000)
+    }
+  }, [inviteAccepted, router])
 
   useEffect(() => {
     checkRoleAndLoadStats()
@@ -28,13 +42,12 @@ export default function DashboardPage() {
 
   async function checkRoleAndLoadStats() {
     try {
-      // Проверяем роль
       const meRes = await fetch('/api/auth/me')
       if (meRes.ok) {
         const user = await meRes.json()
         
-        // Если жилец — редирект
-        if (user.role === 'TENANT') {
+        // Если пользователь только жилец (без роли владельца) — редирект
+        if (user.isTenant && !user.isOwner) {
           router.replace('/tenant/dashboard')
           return
         }
@@ -70,6 +83,24 @@ export default function DashboardPage() {
 
   return (
     <div className="w-full">
+      {/* Сообщение о принятом приглашении */}
+      {showInviteSuccess && (
+        <Card className="p-4 mb-6 bg-green-50 border-green-200">
+          <div className="flex items-center gap-3">
+            <CheckCircle className="h-5 w-5 text-green-600" />
+            <div>
+              <p className="font-medium text-green-800">Приглашение принято!</p>
+              <p className="text-sm text-green-700">
+                Теперь у вас есть доступ к новой квартире как жилец.{' '}
+                <Link href="/tenant/dashboard" className="underline hover:no-underline">
+                  Перейти в панель жильца →
+                </Link>
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <div className="mb-6">
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.dashboard.title}</h1>
         <p className="text-gray-500 mt-1">{t.dashboard.welcome}</p>
