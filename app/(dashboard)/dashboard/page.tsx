@@ -1,7 +1,7 @@
 // app/(dashboard)/dashboard/page.tsx
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2, CheckCircle } from 'lucide-react'
@@ -16,7 +16,7 @@ interface DashboardStats {
   monthlyIncome: number
 }
 
-export default function DashboardPage() {
+function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteAccepted = searchParams.get('invite_accepted')
@@ -29,9 +29,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (inviteAccepted) {
       setShowInviteSuccess(true)
-      // Убираем параметр из URL
       router.replace('/dashboard', { scroll: false })
-      // Скрываем сообщение через 5 секунд
       setTimeout(() => setShowInviteSuccess(false), 5000)
     }
   }, [inviteAccepted, router])
@@ -209,5 +207,18 @@ function QuickAction({ href, icon, title, description }: {
         <p className="text-sm text-gray-500">{description}</p>
       </div>
     </Link>
+  )
+}
+
+// Обёртка с Suspense для useSearchParams
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
   )
 }
