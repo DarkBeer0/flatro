@@ -1,7 +1,7 @@
 // app/(dashboard)/settings/page.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2, AlertCircle, Home, Users, ToggleLeft, ToggleRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,7 @@ interface RolesInfo {
   hasActiveTenancy: boolean
 }
 
-export default function SettingsPage() {
+function SettingsContent() {
   const router = useRouter()
   const { t, locale, setLocale } = useLocale()
   const [activeTab, setActiveTab] = useState('profile')
@@ -160,18 +160,6 @@ export default function SettingsPage() {
   const handleToggleRole = async (role: 'owner' | 'tenant', enable: boolean) => {
     if (!rolesInfo) return
 
-    // Проверка: нельзя отключить обе роли
-    if (!enable) {
-      if (role === 'owner' && !rolesInfo.isTenant) {
-        setRolesError('Нельзя отключить единственную активную роль')
-        return
-      }
-      if (role === 'tenant' && !rolesInfo.isOwner) {
-        setRolesError('Нельзя отключить единственную активную роль')
-        return
-      }
-    }
-
     setRolesSaving(true)
     setRolesError(null)
 
@@ -200,12 +188,6 @@ export default function SettingsPage() {
           isOwner: data.isOwner,
           isTenant: data.isTenant,
         } : null)
-
-        // Если отключили текущий режим, возможно нужен редирект
-        if (role === 'owner' && !enable && !data.isTenant) {
-          // Это не должно произойти, но на всякий случай
-          router.push('/tenant/dashboard')
-        }
       } else {
         setRolesError(data.error || 'Не удалось изменить роль')
       }
@@ -214,7 +196,6 @@ export default function SettingsPage() {
       setRolesError('Ошибка сети. Попробуйте позже.')
     } finally {
       setRolesSaving(false)
-      // Перезагружаем информацию о ролях
       loadRolesInfo()
     }
   }
@@ -232,6 +213,27 @@ export default function SettingsPage() {
     const [local, domain] = email.split('@')
     if (local.length <= 2) return email
     return `${local.slice(0, 2)}${'*'.repeat(Math.min(local.length - 2, 5))}@${domain}`
+  }
+
+  // --- ВЫЧИСЛЯЕМ disabled ДЛЯ КНОПОК РОЛЕЙ ---
+  // Включить роль = ВСЕГДА можно
+  // Отключить роль = только если нет активных данных И есть другая активная роль
+  const getOwnerToggleDisabled = (): boolean => {
+    if (!rolesInfo || rolesSaving) return true
+    // Если роль ВЫКЛЮЧЕНА → кнопка включения ВСЕГДА доступна
+    if (!rolesInfo.isOwner) return false
+    // Если роль ВКЛЮЧЕНА → проверяем можно ли отключить
+    // Нельзя если есть квартиры ИЛИ это единственная роль
+    return !rolesInfo.canDisableOwner || !rolesInfo.isTenant
+  }
+
+  const getTenantToggleDisabled = (): boolean => {
+    if (!rolesInfo || rolesSaving) return true
+    // Если роль ВЫКЛЮЧЕНА → кнопка включения ВСЕГДА доступна
+    if (!rolesInfo.isTenant) return false
+    // Если роль ВКЛЮЧЕНА → проверяем можно ли отключить
+    // Нельзя если есть активная аренда ИЛИ это единственная роль
+    return !rolesInfo.canDisableTenant || !rolesInfo.isOwner
   }
 
   const tabs = [
@@ -370,6 +372,11 @@ export default function SettingsPage() {
                           Жилец
                         </span>
                       )}
+                      {!userData?.isOwner && !userData?.isTenant && (
+                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-sm">
+                          Нет ролей — выберите роль
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -396,7 +403,7 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {/* Roles Tab - НОВАЯ ВКЛАДКА */}
+          {/* Roles Tab */}
           {activeTab === 'roles' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Управление ролями</h2>
@@ -408,6 +415,13 @@ export default function SettingsPage() {
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-red-700 text-sm">
                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
                   {rolesError}
+                </div>
+              )}
+
+              {/* Предупреждение если обе роли выключены */}
+              {rolesInfo && !rolesInfo.isOwner && !rolesInfo.isTenant && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-yellow-800 text-sm">
+                  ⚠️ У вас нет активных ролей. Пожалуйста, включите хотя бы одну роль.
                 </div>
               )}
 
@@ -434,22 +448,27 @@ export default function SettingsPage() {
                               У вас {rolesInfo.ownedPropertiesCount} объект(ов) недвижимости
                             </p>
                           )}
-                          {!rolesInfo.canDisableOwner && rolesInfo.isOwner && (
+                          {rolesInfo.isOwner && !rolesInfo.canDisableOwner && (
                             <p className="text-xs text-orange-600 mt-1">
                               ⚠️ Нельзя отключить — есть активные квартиры
+                            </p>
+                          )}
+                          {rolesInfo.isOwner && rolesInfo.canDisableOwner && !rolesInfo.isTenant && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ Нельзя отключить — это единственная роль. Сначала включите роль жильца.
                             </p>
                           )}
                         </div>
                       </div>
                       <button
                         onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)}
-                        disabled={rolesSaving || (rolesInfo.isOwner && !rolesInfo.canDisableOwner) || (!rolesInfo.isOwner && !rolesInfo.isTenant)}
+                        disabled={getOwnerToggleDisabled()}
                         className="flex-shrink-0"
                       >
                         {rolesInfo.isOwner ? (
-                          <ToggleRight className={`h-8 w-8 ${rolesInfo.canDisableOwner ? 'text-blue-600' : 'text-gray-300'}`} />
+                          <ToggleRight className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-blue-600 hover:text-blue-700'}`} />
                         ) : (
-                          <ToggleLeft className="h-8 w-8 text-gray-300 hover:text-blue-400" />
+                          <ToggleLeft className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-blue-500'}`} />
                         )}
                       </button>
                     </div>
@@ -472,22 +491,27 @@ export default function SettingsPage() {
                               Вы арендуете квартиру
                             </p>
                           )}
-                          {!rolesInfo.canDisableTenant && rolesInfo.isTenant && (
+                          {rolesInfo.isTenant && !rolesInfo.canDisableTenant && (
                             <p className="text-xs text-orange-600 mt-1">
                               ⚠️ Нельзя отключить — есть активная аренда
+                            </p>
+                          )}
+                          {rolesInfo.isTenant && rolesInfo.canDisableTenant && !rolesInfo.isOwner && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ Нельзя отключить — это единственная роль. Сначала включите роль владельца.
                             </p>
                           )}
                         </div>
                       </div>
                       <button
                         onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)}
-                        disabled={rolesSaving || (rolesInfo.isTenant && !rolesInfo.canDisableTenant) || (!rolesInfo.isTenant && !rolesInfo.isOwner)}
+                        disabled={getTenantToggleDisabled()}
                         className="flex-shrink-0"
                       >
                         {rolesInfo.isTenant ? (
-                          <ToggleRight className={`h-8 w-8 ${rolesInfo.canDisableTenant ? 'text-green-600' : 'text-gray-300'}`} />
+                          <ToggleRight className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-green-600 hover:text-green-700'}`} />
                         ) : (
-                          <ToggleLeft className="h-8 w-8 text-gray-300 hover:text-green-400" />
+                          <ToggleLeft className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-green-500'}`} />
                         )}
                       </button>
                     </div>
@@ -700,5 +724,18 @@ function NotificationToggle({
         />
       </button>
     </div>
+  )
+}
+
+// Обёртка с Suspense
+export default function SettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   )
 }

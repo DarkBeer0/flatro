@@ -26,7 +26,7 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
   
-  // ИСПРАВЛЕНИЕ БАГ 2: Состояния для повторной отправки
+  // Состояния для повторной отправки
   const [resending, setResending] = useState(false)
   const [resendCooldown, setResendCooldown] = useState(0)
   const [resendAttempts, setResendAttempts] = useState(0)
@@ -72,6 +72,8 @@ export default function RegisterPage() {
         data: {
           name: name,
         },
+        // ИСПРАВЛЕНИЕ: Указываем куда редиректить после подтверждения email
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
       },
     })
 
@@ -88,11 +90,11 @@ export default function RegisterPage() {
     }
 
     setSuccess(true)
-    setResendCooldown(RESEND_COOLDOWN_SECONDS) // Запускаем таймер сразу после регистрации
+    setResendCooldown(RESEND_COOLDOWN_SECONDS)
     setLoading(false)
   }
 
-  // ИСПРАВЛЕНИЕ БАГ 2: Функция повторной отправки письма
+  // Функция повторной отправки письма
   const handleResendEmail = useCallback(async () => {
     if (resendCooldown > 0 || resending || resendAttempts >= MAX_RESEND_ATTEMPTS) {
       return
@@ -108,6 +110,9 @@ export default function RegisterPage() {
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       })
 
       if (error) {
@@ -121,7 +126,6 @@ export default function RegisterPage() {
         setResendAttempts(prev => prev + 1)
         setResendCooldown(RESEND_COOLDOWN_SECONDS)
         
-        // Скрываем сообщение об успехе через 5 секунд
         setTimeout(() => setResendSuccess(false), 5000)
       }
     } catch (err) {
@@ -214,7 +218,7 @@ export default function RegisterPage() {
 
             <Link href="/login">
               <Button variant="outline" className="w-full">
-                Вернуться к входу
+                Вернуться ко входу
               </Button>
             </Link>
           </Card>
