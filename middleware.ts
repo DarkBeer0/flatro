@@ -35,24 +35,19 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Публичные пути (не требуют авторизации)
-  const publicPaths = ['/', '/login', '/register', '/forgot-password', '/auth/callback']
+  const publicPaths = ['/', '/login', '/register', '/forgot-password', '/auth/callback', '/reset-password']
   const isPublicPath = publicPaths.some(path => pathname === path)
   
-  // Страница приглашения — доступна для всех
+  // Страница приглашения — доступна для ВСЕХ (и авторизованных, и нет)
   const isInvitePath = pathname.startsWith('/invite/')
-  
-  // Пути для владельцев
-  const ownerPaths = ['/dashboard', '/properties', '/tenants', '/payments', '/contracts', '/settings', '/messages', '/tickets']
-  const isOwnerPath = ownerPaths.some(path => pathname.startsWith(path))
-  
-  // Пути для жильцов
-  const tenantPaths = ['/tenant']
-  const isTenantPath = tenantPaths.some(path => pathname.startsWith(path))
 
-  // Если пользователь не авторизован
+  // API пути — пропускаем (авторизация проверяется в самих API)
+  const isApiPath = pathname.startsWith('/api/')
+
+  // Если пользователь НЕ авторизован
   if (!user) {
-    // Разрешаем публичные пути и приглашения
-    if (isPublicPath || isInvitePath) {
+    // Разрешаем публичные пути, приглашения и API
+    if (isPublicPath || isInvitePath || isApiPath) {
       return supabaseResponse
     }
     // Редирект на логин
@@ -61,19 +56,31 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Пользователь авторизован
-  
-  // Если пытается зайти на логин/регистрацию — редирект
+  // Пользователь АВТОРИЗОВАН
+
+  // Приглашения — всегда пропускаем (авторизованный тоже может принять invite)
+  if (isInvitePath) {
+    return supabaseResponse
+  }
+
+  // Если пытается зайти на логин/регистрацию — редирект на dashboard
   if (pathname === '/login' || pathname === '/register') {
+    // Проверяем нет ли invite параметра
+    const inviteParam = request.nextUrl.searchParams.get('invite')
+    if (inviteParam) {
+      // Если есть invite — перенаправляем на страницу приглашения
+      const url = request.nextUrl.clone()
+      url.pathname = `/invite/${inviteParam}`
+      url.search = ''
+      return NextResponse.redirect(url)
+    }
+
     const url = request.nextUrl.clone()
-    // TODO: Определить роль и редиректить на нужный dashboard
-    // Пока редиректим на /dashboard, там API определит роль
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
   }
 
   // Разрешаем все остальные пути для авторизованных
-  // Роль проверяется на уровне страниц/API
   return supabaseResponse
 }
 
