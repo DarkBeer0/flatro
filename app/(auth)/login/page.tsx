@@ -25,6 +25,7 @@ function LoginForm() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
+    // Сохраняем invite код ТОЛЬКО если пришли явно с ?invite=
     if (inviteCode) {
       localStorage.setItem('pendingInviteCode', inviteCode)
     }
@@ -34,8 +35,12 @@ function LoginForm() {
         setError('Аккаунт не найден. Возможно, вы ещё не зарегистрированы.')
       } else if (errorParam === 'auth') {
         setError('Ошибка авторизации. Попробуйте войти снова.')
+        // При ошибке auth чистим invite код — он мог застрять от прошлой сессии
+        localStorage.removeItem('pendingInviteCode')
       } else if (errorParam === 'cannot_invite_self') {
         setError('Вы не можете стать жильцом собственной квартиры.')
+        // Чистим invite код — он больше не нужен
+        localStorage.removeItem('pendingInviteCode')
       } else {
         setError(decodeURIComponent(errorParam))
       }
@@ -71,7 +76,9 @@ function LoginForm() {
     }
 
     // Проверяем pending приглашение
-    const pendingInvite = localStorage.getItem('pendingInviteCode') || inviteCode
+    // Используем ТОЛЬКО из localStorage если пришли с ?invite=, 
+    // иначе берём только из URL текущей страницы
+    const pendingInvite = inviteCode || localStorage.getItem('pendingInviteCode')
 
     if (pendingInvite) {
       try {
@@ -79,11 +86,12 @@ function LoginForm() {
           method: 'POST',
         })
         
+        // ВСЕГДА чистим после попытки (успешной или нет)
+        localStorage.removeItem('pendingInviteCode')
+        
         if (res.ok) {
-          localStorage.removeItem('pendingInviteCode')
           const data = await res.json()
           
-          // Редирект в зависимости от ролей пользователя
           if (data.isOwner) {
             router.push('/dashboard?invite_accepted=true')
           } else {
@@ -98,26 +106,26 @@ function LoginForm() {
             setLoading(false)
             return
           }
+          // Другие ошибки (expired, already used) — просто продолжаем вход
         }
       } catch (err) {
         console.error('Error activating invitation:', err)
+        localStorage.removeItem('pendingInviteCode')
       }
     }
 
-    // Получаем информацию о пользователе
+    // Получаем информацию о пользователе для редиректа
     try {
       const res = await fetch('/api/auth/me')
       
       if (res.ok) {
         const user = await res.json()
         
-        // Если есть обе роли - идём в dashboard владельца
         if (user.isOwner) {
           router.push('/dashboard')
         } else if (user.isTenant) {
           router.push('/tenant/dashboard')
         } else {
-          // Fallback
           router.push('/dashboard')
         }
         router.refresh()
