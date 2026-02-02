@@ -1,7 +1,7 @@
 // app/(dashboard)/layout.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
@@ -17,27 +17,53 @@ interface UserInfo {
   isTenant: boolean
 }
 
+function getCachedRoles(): UserInfo | null {
+  try {
+    const cached = localStorage.getItem('flatro_user_roles')
+    if (cached) return JSON.parse(cached)
+  } catch {}
+  return null
+}
+
+function setCachedRoles(info: UserInfo) {
+  try { localStorage.setItem('flatro_user_roles', JSON.stringify(info)) } catch {}
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(getCachedRoles)
   const pathname = usePathname()
   const router = useRouter()
   const { t } = useLocale()
 
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
-        if (data && !data.error) {
-          setUserInfo({ isOwner: data.isOwner, isTenant: data.isTenant })
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me')
+      if (res.ok) {
+        const data = await res.json()
+        if (!data.error) {
+          const info = { isOwner: data.isOwner, isTenant: data.isTenant }
+          setUserInfo(info)
+          setCachedRoles(info)
         }
-      })
-      .catch(() => {})
+      }
+    } catch {}
   }, [])
+
+  useEffect(() => {
+    fetchRoles()
+    const handleRolesChanged = (e: CustomEvent<UserInfo>) => {
+      setUserInfo(e.detail)
+      setCachedRoles(e.detail)
+    }
+    window.addEventListener('roles-changed', handleRolesChanged as EventListener)
+    return () => window.removeEventListener('roles-changed', handleRolesChanged as EventListener)
+  }, [fetchRoles])
 
   const isDualRole = userInfo?.isOwner && userInfo?.isTenant
 
+  // === ЕДИНЫЙ ПОРЯДОК: Владелец → Арендатор (всегда) ===
   const ownerNavItems = [
     { href: '/dashboard', icon: Gauge, label: t.nav.dashboard },
     { href: '/properties', icon: Home, label: t.nav.properties },
@@ -55,17 +81,92 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === '/dashboard'
+    if (href === '/tenant/dashboard') return pathname === '/tenant/dashboard'
     return pathname.startsWith(href)
   }
 
   const handleLogout = async () => {
     setLoggingOut(true)
-    try { localStorage.removeItem('pendingInviteCode') } catch {}
+    try {
+      localStorage.removeItem('pendingInviteCode')
+      localStorage.removeItem('flatro_user_roles')
+    } catch {}
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
   }
+
+  const renderSidebar = () => (
+    <>
+      {/* Владелец — ВСЕГДА первый */}
+      {isDualRole && (
+        <div className="px-3 pt-1 pb-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">Владелец</span>
+        </div>
+      )}
+
+      {ownerNavItems.map((item) => {
+        const Icon = item.icon
+        const active = isActive(item.href)
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            onClick={() => setSidebarOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+              active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+            }`}
+          >
+            <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
+            <span>{item.label}</span>
+          </Link>
+        )
+      })}
+
+      {/* Арендатор — ВСЕГДА второй */}
+      {isDualRole && (
+        <>
+          <div className="pt-4 mt-3 border-t border-gray-200">
+            <div className="px-3 pt-1 pb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-green-500">Арендатор</span>
+            </div>
+          </div>
+          {tenantNavItems.map((item) => {
+            const Icon = item.icon
+            const active = isActive(item.href)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                  active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
+                <span>{item.label}</span>
+              </Link>
+            )
+          })}
+        </>
+      )}
+
+      {/* Настройки */}
+      <div className="pt-4 mt-4 border-t">
+        <Link
+          href="/settings"
+          onClick={() => setSidebarOpen(false)}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+            pathname.startsWith('/settings') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+          }`}
+        >
+          <Settings className={`h-5 w-5 ${pathname.startsWith('/settings') ? 'text-blue-600' : ''}`} />
+          <span>{t.nav.settings}</span>
+        </Link>
+      </div>
+    </>
+  )
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -86,7 +187,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`
         fixed top-0 left-0 z-50 h-screen w-72 bg-white border-r border-gray-200
         transform transition-transform duration-300 ease-in-out
@@ -102,74 +202,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         <nav className="flex flex-col h-[calc(100vh-4rem)]">
           <div className="flex-1 p-4 space-y-1 overflow-y-auto">
-            
-            {isDualRole && (
-              <div className="px-3 pt-1 pb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">Владелец</span>
-              </div>
-            )}
-            
-            {ownerNavItems.map((item) => {
-              const Icon = item.icon
-              const active = isActive(item.href)
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                    active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
-                  <span>{item.label}</span>
-                </Link>
-              )
-            })}
-            
-            {isDualRole && (
-              <>
-                <div className="pt-4 mt-3 border-t border-gray-200">
-                  <div className="px-3 pt-1 pb-2">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-green-500">Арендатор</span>
-                  </div>
-                </div>
-                {tenantNavItems.map((item) => {
-                  const Icon = item.icon
-                  const active = isActive(item.href)
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      onClick={() => setSidebarOpen(false)}
-                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                        active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-                      }`}
-                    >
-                      <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
-                      <span>{item.label}</span>
-                    </Link>
-                  )
-                })}
-              </>
-            )}
-
-            {/* Единые настройки */}
-            <div className="pt-4 mt-4 border-t">
-              <Link
-                href="/settings"
-                onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-                  isActive('/settings') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                <Settings className={`h-5 w-5 ${isActive('/settings') ? 'text-blue-600' : ''}`} />
-                <span>{t.nav.settings}</span>
-              </Link>
-            </div>
+            {renderSidebar()}
           </div>
 
           <div className="p-4 border-t space-y-2">
@@ -179,9 +215,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <span className="text-xs text-gray-600">Владелец + Арендатор</span>
               </div>
             )}
-            
             <LanguageSwitcher />
-            
             <button
               onClick={handleLogout}
               disabled={loggingOut}

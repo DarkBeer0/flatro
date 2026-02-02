@@ -5,8 +5,8 @@ import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2,
-  AlertCircle, Home as HomeIcon, Users, ToggleLeft, ToggleRight,
-  ChevronDown, Building2, Phone, Mail, KeyRound
+  AlertCircle, Home as HomeIcon, Users, ChevronDown, Building2,
+  Phone, Mail, KeyRound
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -51,6 +51,16 @@ interface TenantInfo {
   isActive: boolean
 }
 
+// === Утилита: оповещаем сайдбар о смене ролей (Баг 3 fix) ===
+function dispatchRolesChanged(isOwner: boolean, isTenant: boolean) {
+  try {
+    localStorage.setItem('flatro_user_roles', JSON.stringify({ isOwner, isTenant }))
+  } catch {}
+  window.dispatchEvent(new CustomEvent('roles-changed', {
+    detail: { isOwner, isTenant }
+  }))
+}
+
 function SettingsContent() {
   const router = useRouter()
   const { t, locale, setLocale } = useLocale()
@@ -90,7 +100,6 @@ function SettingsContent() {
 
     try {
       const res = await fetch('/api/user')
-
       if (!res.ok) {
         setLoadError(res.status === 404
           ? 'Профиль не найден. Попробуйте войти заново.'
@@ -110,15 +119,16 @@ function SettingsContent() {
         accountHolder: data.accountHolder || '',
       })
 
+      // Синхронизируем кэш ролей
+      dispatchRolesChanged(data.isOwner, data.isTenant)
+
       // Параллельно загружаем роли и профиль жильца
       const promises: Promise<void>[] = [loadRolesInfo()]
-      if (data.isTenant) {
-        promises.push(loadTenantInfo())
-      }
+      if (data.isTenant) promises.push(loadTenantInfo())
       await Promise.all(promises)
     } catch (error) {
       console.error('Error loading user data:', error)
-      setLoadError('Ошибка подключения. Проверьте интернет-соединение.')
+      setLoadError('Ошибка подключения.')
     } finally {
       setLoading(false)
     }
@@ -129,17 +139,16 @@ function SettingsContent() {
     try {
       const res = await fetch('/api/user/roles')
       if (res.ok) setRolesInfo(await res.json())
-    } catch (error) {
-      console.error('Error loading roles:', error)
-    } finally {
-      setRolesLoading(false)
-    }
+    } catch {} finally { setRolesLoading(false) }
   }
 
   const loadTenantInfo = async () => {
     try {
       const res = await fetch('/api/tenant/profile')
-      if (res.ok) setTenantInfo(await res.json())
+      if (res.ok) {
+        const data = await res.json()
+        setTenantInfo(data)
+      }
     } catch (error) {
       console.error('Error loading tenant info:', error)
     }
@@ -165,21 +174,18 @@ function SettingsContent() {
         }),
       })
       if (res.ok) {
-        const updatedUser = await res.json()
-        setUserData(updatedUser)
+        setUserData(await res.json())
         setSaved(true)
         setTimeout(() => setSaved(false), 3000)
       } else {
         const error = await res.json()
         alert(error.error || 'Не удалось сохранить')
       }
-    } catch {
-      alert('Ошибка сохранения')
-    } finally {
-      setSaving(false)
-    }
+    } catch { alert('Ошибка сохранения') }
+    finally { setSaving(false) }
   }
 
+  // === Переключение роли (Баги 3+4 fix) ===
   const handleToggleRole = async (role: 'owner' | 'tenant', enable: boolean) => {
     if (!rolesInfo) return
     setRolesSaving(true)
@@ -195,8 +201,24 @@ function SettingsContent() {
       })
       const data = await res.json()
       if (res.ok) {
+        // Обновляем локальное состояние
         setRolesInfo(prev => prev ? { ...prev, isOwner: data.isOwner, isTenant: data.isTenant } : null)
         setUserData(prev => prev ? { ...prev, isOwner: data.isOwner, isTenant: data.isTenant } : null)
+
+        // Баг 3 fix: мгновенно обновляем сайдбар
+        dispatchRolesChanged(data.isOwner, data.isTenant)
+
+        // Баг 4 fix: если отключили текущую роль — редирект
+        const isOnOwnerPage = !window.location.pathname.startsWith('/tenant')
+        const isOnTenantPage = window.location.pathname.startsWith('/tenant')
+
+        if (!data.isOwner && isOnOwnerPage && data.isTenant) {
+          // Отключили владельца, а мы на странице владельца → в панель арендатора
+          setTimeout(() => router.push('/tenant/dashboard'), 300)
+        } else if (!data.isTenant && isOnTenantPage && data.isOwner) {
+          // Отключили арендатора, а мы на странице арендатора → в панель владельца
+          setTimeout(() => router.push('/dashboard'), 300)
+        }
       } else {
         setRolesError(data.error || 'Не удалось изменить роль')
       }
@@ -210,7 +232,10 @@ function SettingsContent() {
 
   const handleLogout = async () => {
     setLoggingOut(true)
-    try { localStorage.removeItem('pendingInviteCode') } catch {}
+    try {
+      localStorage.removeItem('pendingInviteCode')
+      localStorage.removeItem('flatro_user_roles')
+    } catch {}
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
@@ -224,19 +249,21 @@ function SettingsContent() {
     return `${local.slice(0, 2)}${'*'.repeat(Math.min(local.length - 2, 5))}@${domain}`
   }
 
-  const getOwnerToggleDisabled = (): boolean => {
-    if (!rolesInfo || rolesSaving) return true
-    if (!rolesInfo.isOwner) return false
-    return !rolesInfo.canDisableOwner || !rolesInfo.isTenant
+  // Баг 2 fix: разделяем «disabled» и «active»
+  // canToggle = false значит нельзя переключить, но визуально роль всё ещё активна
+  const getOwnerCanToggle = (): boolean => {
+    if (!rolesInfo || rolesSaving) return false
+    if (!rolesInfo.isOwner) return true // Включить — всегда можно
+    return rolesInfo.canDisableOwner && rolesInfo.isTenant
   }
 
-  const getTenantToggleDisabled = (): boolean => {
-    if (!rolesInfo || rolesSaving) return true
-    if (!rolesInfo.isTenant) return false
-    return !rolesInfo.canDisableTenant || !rolesInfo.isOwner
+  const getTenantCanToggle = (): boolean => {
+    if (!rolesInfo || rolesSaving) return false
+    if (!rolesInfo.isTenant) return true
+    return rolesInfo.canDisableTenant && rolesInfo.isOwner
   }
 
-  // === Табы на основе ролей ===
+  // Табы
   const tabs = [
     { id: 'profile', label: t.settings?.profile || 'Профиль', icon: User },
     ...(userData?.isTenant ? [{ id: 'housing', label: 'Моё жильё', icon: Building2 }] : []),
@@ -248,11 +275,7 @@ function SettingsContent() {
   ]
 
   const activeTabData = tabs.find(tab => tab.id === activeTab)
-
-  const switchTab = (id: string) => {
-    setActiveTab(id)
-    setMobileMenuOpen(false)
-  }
+  const switchTab = (id: string) => { setActiveTab(id); setMobileMenuOpen(false) }
 
   if (loading) {
     return (
@@ -295,7 +318,7 @@ function SettingsContent() {
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* === MOBILE: dropdown tab selector === */}
+        {/* Mobile dropdown */}
         <div className="lg:hidden relative">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -330,11 +353,7 @@ function SettingsContent() {
                   )
                 })}
                 <div className="border-t">
-                  <button
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50"
-                  >
+                  <button onClick={handleLogout} disabled={loggingOut} className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50">
                     {loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
                     {t.settings?.logout || 'Выйти'}
                   </button>
@@ -344,7 +363,7 @@ function SettingsContent() {
           )}
         </div>
 
-        {/* === DESKTOP: sidebar tabs === */}
+        {/* Desktop sidebar */}
         <div className="hidden lg:block lg:w-56 flex-shrink-0">
           <Card className="p-2 sticky top-8">
             <nav className="space-y-0.5">
@@ -365,11 +384,7 @@ function SettingsContent() {
                 )
               })}
               <div className="pt-2 mt-2 border-t">
-                <button
-                  onClick={handleLogout}
-                  disabled={loggingOut}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-red-600 hover:bg-red-50"
-                >
+                <button onClick={handleLogout} disabled={loggingOut} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-red-600 hover:bg-red-50">
                   {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
                   {t.settings?.logout || 'Выйти'}
                 </button>
@@ -378,19 +393,18 @@ function SettingsContent() {
           </Card>
         </div>
 
-        {/* === CONTENT === */}
+        {/* Content */}
         <div className="flex-1 min-w-0">
 
-          {/* ── Profile ── */}
+          {/* Profile */}
           {activeTab === 'profile' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">{t.settings?.profileData || 'Личные данные'}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings?.profileDataDesc || 'Основная информация вашего профиля'}</p>
-
+              <h2 className="text-lg font-semibold mb-1">{t.settings?.profileData || 'Данные профиля'}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.profileDataDesc || 'Обновите ваши личные данные'}</p>
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <Label htmlFor="name">{t.settings?.name || 'Имя'}</Label>
+                    <Label htmlFor="name">{t.settings?.name || 'Имя и фамилия'}</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="Ваше имя" className="pl-10" />
@@ -416,35 +430,27 @@ function SettingsContent() {
                     <div className="flex gap-2 mt-1.5">
                       {userData?.isOwner && <span className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium">Владелец</span>}
                       {userData?.isTenant && <span className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-medium">Арендатор</span>}
-                      {!userData?.isOwner && !userData?.isTenant && (
-                        <span className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">Нет ролей</span>
-                      )}
+                      {!userData?.isOwner && !userData?.isTenant && <span className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">Нет ролей</span>}
                     </div>
                   </div>
                 </div>
-
                 <div className="flex items-center gap-3 pt-4 border-t">
                   <Button onClick={handleSave} disabled={saving}>
-                    {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Сохранение...</> : (t.settings?.saveChanges || 'Сохранить')}
+                    {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Сохранение...</> : (t.settings?.saveChanges || 'Сохранить изменения')}
                   </Button>
-                  {saved && (
-                    <span className="text-green-600 text-sm flex items-center gap-1">
-                      <Check className="h-4 w-4" />{t.settings?.saved || 'Сохранено!'}
-                    </span>
-                  )}
+                  {saved && <span className="text-green-600 text-sm flex items-center gap-1"><Check className="h-4 w-4" />{t.settings?.saved || 'Сохранено!'}</span>}
                 </div>
               </div>
             </Card>
           )}
 
-          {/* ── Моё жильё (tenant) ── */}
+          {/* Housing (tenant) */}
           {activeTab === 'housing' && userData?.isTenant && (
             <div className="space-y-4">
               {tenantInfo?.property ? (
                 <Card className="p-6">
                   <h2 className="text-lg font-semibold mb-1">Моё жильё</h2>
                   <p className="text-sm text-gray-500 mb-5">Информация о вашей текущей квартире</p>
-
                   <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-100">
                     <div className="flex items-start gap-4">
                       <div className="p-3 bg-white rounded-xl shadow-sm">
@@ -454,41 +460,25 @@ function SettingsContent() {
                         <h3 className="font-semibold text-gray-900 text-lg">{tenantInfo.property.name}</h3>
                         <p className="text-gray-600 mt-0.5">{tenantInfo.property.address}</p>
                         <p className="text-gray-500 text-sm">{tenantInfo.property.city}</p>
-
                         <div className="flex flex-wrap items-center gap-3 mt-3">
                           <Badge className={tenantInfo.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
                             {tenantInfo.isActive ? 'Активный арендатор' : 'Неактивный'}
                           </Badge>
                           {tenantInfo.moveInDate && (
-                            <span className="text-sm text-gray-500">
-                              Заселение: {new Date(tenantInfo.moveInDate).toLocaleDateString()}
-                            </span>
+                            <span className="text-sm text-gray-500">Заселение: {new Date(tenantInfo.moveInDate).toLocaleDateString()}</span>
                           )}
                         </div>
                       </div>
                     </div>
                   </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
-                    <button
-                      onClick={() => router.push('/tenant/payments')}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
-                    >
+                    <button onClick={() => router.push('/tenant/payments')} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left">
                       <CreditCard className="h-5 w-5 text-blue-600" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Мои платежи</p>
-                        <p className="text-xs text-gray-500">Просмотр и оплата</p>
-                      </div>
+                      <div><p className="font-medium text-gray-900 text-sm">Мои платежи</p><p className="text-xs text-gray-500">Просмотр и оплата</p></div>
                     </button>
-                    <button
-                      onClick={() => router.push('/tenant/tickets')}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
-                    >
+                    <button onClick={() => router.push('/tenant/tickets')} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left">
                       <AlertCircle className="h-5 w-5 text-orange-500" />
-                      <div>
-                        <p className="font-medium text-gray-900 text-sm">Заявки</p>
-                        <p className="text-xs text-gray-500">Сообщить о проблеме</p>
-                      </div>
+                      <div><p className="font-medium text-gray-900 text-sm">Заявки</p><p className="text-xs text-gray-500">Сообщить о проблеме</p></div>
                     </button>
                   </div>
                 </Card>
@@ -502,7 +492,7 @@ function SettingsContent() {
             </div>
           )}
 
-          {/* ── Roles ── */}
+          {/* Roles — Баг 2 fix: toggle всегда цветной если роль активна */}
           {activeTab === 'roles' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Управление ролями</h2>
@@ -524,7 +514,7 @@ function SettingsContent() {
                 <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>
               ) : rolesInfo && (
                 <div className="space-y-4">
-                  {/* Owner role */}
+                  {/* Owner */}
                   <div className={`p-4 rounded-xl border-2 transition-colors ${rolesInfo.isOwner ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
@@ -537,23 +527,38 @@ function SettingsContent() {
                           {rolesInfo.isOwner && rolesInfo.ownedPropertiesCount > 0 && (
                             <p className="text-xs text-blue-600 mt-1">{rolesInfo.ownedPropertiesCount} объект(ов)</p>
                           )}
-                          {rolesInfo.isOwner && !rolesInfo.canDisableOwner && (
-                            <p className="text-xs text-orange-600 mt-1">⚠️ Нельзя отключить — есть квартиры</p>
-                          )}
-                          {rolesInfo.isOwner && rolesInfo.canDisableOwner && !rolesInfo.isTenant && (
-                            <p className="text-xs text-orange-600 mt-1">⚠️ Единственная роль</p>
+                          {rolesInfo.isOwner && !getOwnerCanToggle() && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ {!rolesInfo.canDisableOwner ? 'Нельзя отключить — есть квартиры' : 'Единственная роль'}
+                            </p>
                           )}
                         </div>
                       </div>
-                      <button onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)} disabled={getOwnerToggleDisabled()} className="flex-shrink-0 p-1">
-                        {rolesInfo.isOwner
-                          ? <ToggleRight className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-blue-600 hover:text-blue-700'}`} />
-                          : <ToggleLeft className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-blue-500'}`} />}
+                      {/* Баг 2 fix: switch-стиль toggle вместо ToggleLeft/Right */}
+                      <button
+                        onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)}
+                        disabled={!getOwnerCanToggle()}
+                        className="flex-shrink-0"
+                        aria-label={rolesInfo.isOwner ? 'Отключить владельца' : 'Включить владельца'}
+                      >
+                        <div className={`
+                          relative w-12 h-7 rounded-full transition-colors
+                          ${rolesInfo.isOwner
+                            ? (getOwnerCanToggle() ? 'bg-blue-600' : 'bg-blue-400')
+                            : (getOwnerCanToggle() ? 'bg-gray-300 hover:bg-gray-400' : 'bg-gray-200')
+                          }
+                          ${!getOwnerCanToggle() ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}
+                        `}>
+                          <span className={`
+                            absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform shadow-sm
+                            ${rolesInfo.isOwner ? 'translate-x-5' : ''}
+                          `} />
+                        </div>
                       </button>
                     </div>
                   </div>
 
-                  {/* Tenant role */}
+                  {/* Tenant */}
                   <div className={`p-4 rounded-xl border-2 transition-colors ${rolesInfo.isTenant ? 'border-green-200 bg-green-50/50' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
@@ -566,23 +571,36 @@ function SettingsContent() {
                           {rolesInfo.hasActiveTenancy && (
                             <p className="text-xs text-green-600 mt-1">Активная аренда</p>
                           )}
-                          {rolesInfo.isTenant && !rolesInfo.canDisableTenant && (
-                            <p className="text-xs text-orange-600 mt-1">⚠️ Нельзя отключить — активная аренда</p>
-                          )}
-                          {rolesInfo.isTenant && rolesInfo.canDisableTenant && !rolesInfo.isOwner && (
-                            <p className="text-xs text-orange-600 mt-1">⚠️ Единственная роль</p>
+                          {rolesInfo.isTenant && !getTenantCanToggle() && (
+                            <p className="text-xs text-orange-600 mt-1">
+                              ⚠️ {!rolesInfo.canDisableTenant ? 'Нельзя отключить — активная аренда' : 'Единственная роль'}
+                            </p>
                           )}
                         </div>
                       </div>
-                      <button onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)} disabled={getTenantToggleDisabled()} className="flex-shrink-0 p-1">
-                        {rolesInfo.isTenant
-                          ? <ToggleRight className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-green-600 hover:text-green-700'}`} />
-                          : <ToggleLeft className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-green-500'}`} />}
+                      <button
+                        onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)}
+                        disabled={!getTenantCanToggle()}
+                        className="flex-shrink-0"
+                        aria-label={rolesInfo.isTenant ? 'Отключить арендатора' : 'Включить арендатора'}
+                      >
+                        <div className={`
+                          relative w-12 h-7 rounded-full transition-colors
+                          ${rolesInfo.isTenant
+                            ? (getTenantCanToggle() ? 'bg-green-600' : 'bg-green-400')
+                            : (getTenantCanToggle() ? 'bg-gray-300 hover:bg-gray-400' : 'bg-gray-200')
+                          }
+                          ${!getTenantCanToggle() ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}
+                        `}>
+                          <span className={`
+                            absolute top-1 left-1 w-5 h-5 bg-white rounded-full transition-transform shadow-sm
+                            ${rolesInfo.isTenant ? 'translate-x-5' : ''}
+                          `} />
+                        </div>
                       </button>
                     </div>
                   </div>
 
-                  {/* Hint */}
                   <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
                     <p className="font-medium mb-2">💡 Как это работает:</p>
                     <ul className="list-disc list-inside space-y-1 text-gray-500">
@@ -607,12 +625,11 @@ function SettingsContent() {
             </Card>
           )}
 
-          {/* ── Bank Details (owner only) ── */}
+          {/* Bank */}
           {activeTab === 'bank' && userData?.isOwner && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Банковские реквизиты</h2>
-              <p className="text-sm text-gray-500 mb-6">Эти данные будут показаны жильцам для оплаты аренды</p>
-
+              <p className="text-sm text-gray-500 mb-6">Эти данные будут показаны жильцам для оплаты</p>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="bankName">Название банка</Label>
@@ -624,26 +641,23 @@ function SettingsContent() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="accountHolder">Получатель</Label>
-                  <Input id="accountHolder" name="accountHolder" value={formData.accountHolder} onChange={handleChange} placeholder="Имя Фамилия или название компании" />
+                  <Input id="accountHolder" name="accountHolder" value={formData.accountHolder} onChange={handleChange} placeholder="Имя Фамилия или компания" />
                 </div>
                 <div className="flex items-center gap-3 pt-4 border-t">
                   <Button onClick={handleSave} disabled={saving}>
                     {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Сохранение...</> : 'Сохранить реквизиты'}
                   </Button>
-                  {saved && (
-                    <span className="text-green-600 text-sm flex items-center gap-1"><Check className="h-4 w-4" />Сохранено!</span>
-                  )}
+                  {saved && <span className="text-green-600 text-sm flex items-center gap-1"><Check className="h-4 w-4" />Сохранено!</span>}
                 </div>
               </div>
             </Card>
           )}
 
-          {/* ── Language ── */}
+          {/* Language */}
           {activeTab === 'language' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">{t.settings?.language || 'Язык'}</h2>
               <p className="text-sm text-gray-500 mb-6">{t.settings?.languageDesc || 'Выберите язык интерфейса'}</p>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {locales.map((loc) => (
                   <button
@@ -661,52 +675,32 @@ function SettingsContent() {
             </Card>
           )}
 
-          {/* ── Notifications ── */}
+          {/* Notifications */}
           {activeTab === 'notifications' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">{t.settings?.notifications || 'Уведомления'}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings?.notificationsDesc || 'Настройте email-уведомления'}</p>
-
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.notificationsDesc || 'Настройте уведомления'}</p>
               <div className="space-y-3">
-                <NotificationToggle
-                  label={t.settings?.emailPaymentReminders || 'Напоминания о платежах'}
-                  description={t.settings?.emailPaymentRemindersDesc || 'Уведомления о предстоящих платежах'}
-                  defaultChecked={true}
-                />
-                <NotificationToggle
-                  label={t.settings?.emailContractExpiry || 'Окончание договора'}
-                  description={t.settings?.emailContractExpiryDesc || 'Уведомление за 30 дней до окончания'}
-                  defaultChecked={true}
-                />
+                <NotificationToggle label={t.settings?.emailPaymentReminders || 'Напоминания о платежах'} description={t.settings?.emailPaymentRemindersDesc || 'О предстоящих платежах'} defaultChecked={true} />
+                <NotificationToggle label={t.settings?.emailContractExpiry || 'Окончание договора'} description={t.settings?.emailContractExpiryDesc || 'За 30 дней до окончания'} defaultChecked={true} />
                 {userData?.isOwner && (
-                  <NotificationToggle
-                    label={t.settings?.emailNewTenant || 'Новый арендатор'}
-                    description={t.settings?.emailNewTenantDesc || 'Уведомление при регистрации'}
-                    defaultChecked={false}
-                  />
+                  <NotificationToggle label={t.settings?.emailNewTenant || 'Новый арендатор'} description={t.settings?.emailNewTenantDesc || 'При регистрации'} defaultChecked={false} />
                 )}
               </div>
             </Card>
           )}
 
-          {/* ── Security ── */}
+          {/* Security */}
           {activeTab === 'security' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">{t.settings?.security || 'Безопасность'}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings?.securityDesc || 'Пароль и безопасность аккаунта'}</p>
-
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.securityDesc || 'Пароль и безопасность'}</p>
               <div className="space-y-5">
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
-                  <div className="p-2 bg-white rounded-lg shadow-sm">
-                    <KeyRound className="h-5 w-5 text-gray-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">Пароль</p>
-                    <p className="text-sm text-gray-500">Последнее изменение неизвестно</p>
-                  </div>
+                  <div className="p-2 bg-white rounded-lg shadow-sm"><KeyRound className="h-5 w-5 text-gray-600" /></div>
+                  <div className="flex-1"><p className="font-medium text-gray-900">Пароль</p><p className="text-sm text-gray-500">Последнее изменение неизвестно</p></div>
                   <Button variant="outline" size="sm">{t.settings?.changePassword || 'Изменить'}</Button>
                 </div>
-
                 <div className="pt-4 border-t">
                   <h3 className="font-medium text-red-600 mb-2">{t.settings?.dangerZone || 'Опасная зона'}</h3>
                   <p className="text-sm text-gray-500 mb-3">{t.settings?.deleteAccountDesc || 'Удаление аккаунта необратимо'}</p>
@@ -725,10 +719,7 @@ function NotificationToggle({ label, description, defaultChecked }: { label: str
   const [checked, setChecked] = useState(defaultChecked)
   return (
     <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-xl">
-      <div>
-        <p className="font-medium text-gray-900">{label}</p>
-        <p className="text-sm text-gray-500">{description}</p>
-      </div>
+      <div><p className="font-medium text-gray-900">{label}</p><p className="text-sm text-gray-500">{description}</p></div>
       <button
         onClick={() => setChecked(!checked)}
         className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-blue-600' : 'bg-gray-300'}`}
@@ -741,11 +732,7 @@ function NotificationToggle({ label, description, defaultChecked }: { label: str
 
 export default function SettingsPage() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    }>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[400px]"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>}>
       <SettingsContent />
     </Suspense>
   )

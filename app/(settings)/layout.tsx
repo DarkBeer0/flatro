@@ -1,12 +1,12 @@
-// app/(tenant)/layout.tsx
+// app/(settings)/layout.tsx
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  Home, Users, CreditCard, MessageSquare, AlertTriangle, Settings, Building2,
-  Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft
+  Home, Users, Building2, CreditCard, FileText, Settings, Gauge,
+  Menu, X, LogOut, Loader2, MessageSquare, AlertTriangle, ArrowRightLeft
 } from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -29,7 +29,7 @@ function setCachedRoles(info: UserInfo) {
   try { localStorage.setItem('flatro_user_roles', JSON.stringify(info)) } catch {}
 }
 
-export default function TenantLayout({ children }: { children: React.ReactNode }) {
+export default function SettingsLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const [userInfo, setUserInfo] = useState<UserInfo | null>(getCachedRoles)
@@ -61,9 +61,16 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     return () => window.removeEventListener('roles-changed', handleRolesChanged as EventListener)
   }, [fetchRoles])
 
-  const isDualRole = userInfo?.isOwner && userInfo?.isTenant
+  const isOwner = userInfo?.isOwner ?? false
+  const isTenant = userInfo?.isTenant ?? false
+  const isDualRole = isOwner && isTenant
+  const isTenantOnly = !isOwner && isTenant
 
-  // === ЕДИНЫЙ ПОРЯДОК: Владелец → Арендатор (всегда, идентично dashboard layout) ===
+  // Цвета зависят от роли
+  const accentColor = isTenantOnly ? 'green' : 'blue'
+  const logoColor = isTenantOnly ? 'text-green-600' : 'text-blue-600'
+  const homeLink = isTenantOnly ? '/tenant/dashboard' : '/dashboard'
+
   const ownerNavItems = [
     { href: '/dashboard', icon: Gauge, label: t.nav?.dashboard || 'Главная' },
     { href: '/properties', icon: Home, label: t.nav?.properties || 'Недвижимость' },
@@ -97,61 +104,58 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     router.refresh()
   }
 
-  // Для не-dual-role (только арендатор) — простой сайдбар
-  const renderSingleTenantSidebar = () => (
+  // --- Рендер навигации по роли ---
+
+  const renderOwnerOnlyNav = () => (
+    <>
+      {ownerNavItems.map((item) => {
+        const Icon = item.icon
+        const active = isActive(item.href)
+        return (
+          <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+              active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+            }`}>
+            <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
+            <span>{item.label}</span>
+          </Link>
+        )
+      })}
+    </>
+  )
+
+  const renderTenantOnlyNav = () => (
     <>
       {tenantNavItems.map((item) => {
         const Icon = item.icon
         const active = isActive(item.href)
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setSidebarOpen(false)}
+          <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
               active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
+            }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
             <span>{item.label}</span>
           </Link>
         )
       })}
-      <div className="pt-4 mt-4 border-t">
-        <Link
-          href="/settings"
-          onClick={() => setSidebarOpen(false)}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-            pathname.startsWith('/settings') ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <Settings className={`h-5 w-5 ${pathname.startsWith('/settings') ? 'text-green-600' : ''}`} />
-          <span>Настройки</span>
-        </Link>
-      </div>
     </>
   )
 
-  // Для dual-role — ИДЕНТИЧНЫЙ порядок как в dashboard layout
-  const renderDualRoleSidebar = () => (
+  const renderDualRoleNav = () => (
     <>
       {/* Владелец — ВСЕГДА первый */}
       <div className="px-3 pt-1 pb-2">
         <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">Владелец</span>
       </div>
-
       {ownerNavItems.map((item) => {
         const Icon = item.icon
         const active = isActive(item.href)
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setSidebarOpen(false)}
+          <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
               active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
+            }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
             <span>{item.label}</span>
           </Link>
@@ -168,43 +172,30 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         const Icon = item.icon
         const active = isActive(item.href)
         return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={() => setSidebarOpen(false)}
+          <Link key={item.href} href={item.href} onClick={() => setSidebarOpen(false)}
             className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
               active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-            }`}
-          >
+            }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
             <span>{item.label}</span>
           </Link>
         )
       })}
-
-      {/* Настройки */}
-      <div className="pt-4 mt-4 border-t">
-        <Link
-          href="/settings"
-          onClick={() => setSidebarOpen(false)}
-          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
-            pathname.startsWith('/settings') ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
-          }`}
-        >
-          <Settings className={`h-5 w-5 ${pathname.startsWith('/settings') ? 'text-blue-600' : ''}`} />
-          <span>Настройки</span>
-        </Link>
-      </div>
     </>
   )
+
+  const settingsActiveClass = isTenantOnly
+    ? 'bg-green-50 text-green-700 font-medium'
+    : 'bg-blue-50 text-blue-700 font-medium'
+  const settingsIconClass = isTenantOnly ? 'text-green-600' : 'text-blue-600'
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Mobile Header */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200">
         <div className="flex items-center justify-between h-16 px-4">
-          <Link href={isDualRole ? '/dashboard' : '/tenant/dashboard'} className="flex items-center gap-2">
-            <Building2 className={`h-8 w-8 ${isDualRole ? 'text-blue-600' : 'text-green-600'}`} />
+          <Link href={homeLink} className="flex items-center gap-2">
+            <Building2 className={`h-8 w-8 ${logoColor}`} />
             <span className="text-xl font-bold text-gray-900">Flatro</span>
           </Link>
           <button onClick={() => setSidebarOpen(true)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
@@ -224,11 +215,11 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="flex h-16 items-center justify-between border-b px-4 lg:px-6">
-          <Link href={isDualRole ? '/dashboard' : '/tenant/dashboard'} className="flex items-center gap-2">
-            <Building2 className={`h-8 w-8 ${isDualRole ? 'text-blue-600' : 'text-green-600'}`} />
+          <Link href={homeLink} className="flex items-center gap-2">
+            <Building2 className={`h-8 w-8 ${logoColor}`} />
             <div>
               <span className="text-xl font-bold text-gray-900">Flatro</span>
-              {!isDualRole && (
+              {isTenantOnly && (
                 <span className="text-xs text-green-600 block -mt-1">Кабинет жильца</span>
               )}
             </div>
@@ -240,7 +231,22 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
 
         <nav className="flex flex-col h-[calc(100vh-4rem)]">
           <div className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {isDualRole ? renderDualRoleSidebar() : renderSingleTenantSidebar()}
+            {/* Навигация зависит от ролей */}
+            {isDualRole && renderDualRoleNav()}
+            {isOwner && !isTenant && renderOwnerOnlyNav()}
+            {isTenantOnly && renderTenantOnlyNav()}
+
+            {/* Настройки — всегда активны на этой странице */}
+            <div className="pt-4 mt-4 border-t">
+              <Link
+                href="/settings"
+                onClick={() => setSidebarOpen(false)}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${settingsActiveClass}`}
+              >
+                <Settings className={`h-5 w-5 ${settingsIconClass}`} />
+                <span>{t.nav?.settings || 'Настройки'}</span>
+              </Link>
+            </div>
           </div>
 
           <div className="p-4 border-t space-y-2">
@@ -257,7 +263,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-red-600 hover:bg-red-50 w-full"
             >
               {loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
-              <span>Выйти</span>
+              <span>{t.settings?.logout || 'Выйти'}</span>
             </button>
           </div>
         </nav>
