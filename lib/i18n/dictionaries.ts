@@ -113,7 +113,14 @@ export interface Dictionary {
     amount: string
     markAsPaid: string
     filters: { allStatuses: string; allTypes: string; allProperties: string }
-    status: { pending: string; paid: string; overdue: string; cancelled: string }
+    status: {
+    pending: string
+    pendingConfirmation: string
+    paid: string
+    overdue: string
+    rejected: string
+    cancelled: string
+    }
     types: { rent: string; utilities: string; deposit: string; other: string }
   }
   contracts: {
@@ -286,7 +293,12 @@ export const dictionaries: Record<Locale, Dictionary> = {
       amount: 'Сумма',
       markAsPaid: 'Отметить как оплаченный',
       filters: { allStatuses: 'Все статусы', allTypes: 'Все типы', allProperties: 'Вся недвижимость' },
-      status: { pending: 'Ожидает', paid: 'Оплачено', overdue: 'Просрочено', cancelled: 'Отменено' },
+      status: { pending: 'Ожидает',
+      pendingConfirmation: 'На подтверждении',
+      paid: 'Оплачено',
+      overdue: 'Просрочено',
+      rejected: 'Отклонено',
+      cancelled: 'Отменено', },
       types: { rent: 'Аренда', utilities: 'Коммунальные', deposit: 'Залог', other: 'Другое' },
     },
     contracts: {
@@ -453,7 +465,14 @@ export const dictionaries: Record<Locale, Dictionary> = {
       amount: 'Kwota',
       markAsPaid: 'Oznacz jako zapłacone',
       filters: { allStatuses: 'Wszystkie statusy', allTypes: 'Wszystkie typy', allProperties: 'Wszystkie nieruchomości' },
-      status: { pending: 'Oczekuje', paid: 'Zapłacono', overdue: 'Zaległa', cancelled: 'Anulowana' },
+      status: {
+      pending: 'Oczekuje',
+      pendingConfirmation: 'W trakcie potwierdzania',
+      paid: 'Zapłacono',
+      overdue: 'Zaległa',
+      rejected: 'Odrzucona',
+      cancelled: 'Anulowana',
+      },
       types: { rent: 'Czynsz', utilities: 'Media', deposit: 'Kaucja', other: 'Inne' },
     },
     contracts: {
@@ -526,7 +545,16 @@ export const dictionaries: Record<Locale, Dictionary> = {
     dashboard: { title: 'Dashboard', welcome: 'Welcome to Flatro! Manage your properties.', properties: 'Properties', occupied: 'occupied', vacant: 'vacant', tenants: 'Tenants', activeTenants: 'Active tenants', pendingPayments: 'Pending payments', overdue: 'overdue', monthlyIncome: 'Monthly income', currentMonth: 'Current month', quickActions: 'Quick actions', addProperty: 'Add property', addPropertyDesc: 'Add a new apartment or house', addTenant: 'Add tenant', addTenantDesc: 'Register a new tenant', addPayment: 'Add payment', addPaymentDesc: 'Register a received payment', recentActivity: 'Recent activity', noActivity: 'No activity', noActivityDesc: 'Add your first property to get started' },
     properties: { title: 'Properties', subtitle: 'Manage your properties', addNew: 'Add property', total: 'Total', vacantCount: 'Vacant', rentedCount: 'Rented', noProperties: 'No properties', noPropertiesDesc: 'Add your first property to start managing', area: 'Area', rooms: 'Rooms', floor: 'Floor', rent: 'Rent', noTenant: 'No tenant', status: { vacant: 'Vacant', occupied: 'Occupied', reserved: 'Reserved' } },
     tenants: { title: 'Tenants', subtitle: 'Manage your tenants', addNew: 'Add tenant', total: 'Total', active: 'Active', former: 'Former', activeTenants: 'Active tenants', formerTenants: 'Former tenants', noTenants: 'No tenants', noTenantsDesc: 'Add your first tenant to start managing', noProperty: 'No assigned property', status: { active: 'Active', inactive: 'Inactive' } },
-    payments: { title: 'Payments', subtitle: 'Track tenant payments', addNew: 'Add payment', received: 'Received', pending: 'Pending', overdueAmount: 'Overdue', total: 'Total', noPayments: 'No payments', noPaymentsDesc: 'Add your first payment to start tracking', tenant: 'Tenant', property: 'Property', type: 'Type', period: 'Period', dueDate: 'Due date', amount: 'Amount', markAsPaid: 'Mark as paid', filters: { allStatuses: 'All statuses', allTypes: 'All types', allProperties: 'All properties' }, status: { pending: 'Pending', paid: 'Paid', overdue: 'Overdue', cancelled: 'Cancelled' }, types: { rent: 'Rent', utilities: 'Utilities', deposit: 'Deposit', other: 'Other' } },
+    payments: { title: 'Payments', subtitle: 'Track tenant payments', addNew: 'Add payment', received: 'Received', pending: 'Pending', overdueAmount: 'Overdue', total: 'Total', noPayments: 'No payments', noPaymentsDesc: 'Add your first payment to start tracking', tenant: 'Tenant', property: 'Property', type: 'Type', period: 'Period', dueDate: 'Due date', amount: 'Amount', markAsPaid: 'Mark as paid', filters: { allStatuses: 'All statuses', allTypes: 'All types', allProperties: 'All properties' }, 
+    status: {
+      pending: 'Pending',
+      pendingConfirmation: 'Pending confirmation',
+      paid: 'Paid',
+      overdue: 'Overdue',
+      rejected: 'Rejected',
+      cancelled: 'Cancelled',
+    },
+    types: { rent: 'Rent', utilities: 'Utilities', deposit: 'Deposit', other: 'Other' } },
     contracts: { title: 'Contracts', subtitle: 'Manage rental contracts', addNew: 'New contract', total: 'Total', activeCount: 'Active', expiringCount: 'Expiring', monthlyIncome: 'Monthly income', expiringAlert: 'Contracts expiring soon', expiringAlertDesc: 'contracts expire within 30 days.', noContracts: 'No contracts', noContractsDesc: 'Create your first rental contract', expiresIn: 'Expires in', days: 'days', payableBy: 'payable by', indefinite: 'indefinite', status: { draft: 'Draft', active: 'Active', expired: 'Expired', terminated: 'Terminated' }, types: { standard: 'Standard rental', occasional: 'Occasional rental', institutional: 'Institutional rental' } },
     settings: { title: 'Settings', subtitle: 'Manage your account and preferences', profile: 'Profile',
     notifications: 'Notifications', billing: 'Subscription', security: 'Security',
@@ -556,7 +584,16 @@ export const dictionaries: Record<Locale, Dictionary> = {
     dashboard: { title: 'Dashboard', welcome: 'Willkommen bei Flatro! Verwalten Sie Ihre Immobilien.', properties: 'Immobilien', occupied: 'belegt', vacant: 'frei', tenants: 'Mieter', activeTenants: 'Aktive Mieter', pendingPayments: 'Ausstehende Zahlungen', overdue: 'überfällig', monthlyIncome: 'Monatliches Einkommen', currentMonth: 'Aktueller Monat', quickActions: 'Schnellaktionen', addProperty: 'Immobilie hinzufügen', addPropertyDesc: 'Neue Wohnung oder Haus hinzufügen', addTenant: 'Mieter hinzufügen', addTenantDesc: 'Neuen Mieter registrieren', addPayment: 'Zahlung hinzufügen', addPaymentDesc: 'Erhaltene Zahlung registrieren', recentActivity: 'Letzte Aktivitäten', noActivity: 'Keine Aktivität', noActivityDesc: 'Fügen Sie Ihre erste Immobilie hinzu' },
     properties: { title: 'Immobilien', subtitle: 'Verwalten Sie Ihre Immobilien', addNew: 'Immobilie hinzufügen', total: 'Gesamt', vacantCount: 'Frei', rentedCount: 'Vermietet', noProperties: 'Keine Immobilien', noPropertiesDesc: 'Fügen Sie Ihre erste Immobilie hinzu', area: 'Fläche', rooms: 'Zimmer', floor: 'Etage', rent: 'Miete', noTenant: 'Kein Mieter', status: { vacant: 'Frei', occupied: 'Belegt', reserved: 'Reserviert' } },
     tenants: { title: 'Mieter', subtitle: 'Verwalten Sie Ihre Mieter', addNew: 'Mieter hinzufügen', total: 'Gesamt', active: 'Aktiv', former: 'Ehemalige', activeTenants: 'Aktive Mieter', formerTenants: 'Ehemalige Mieter', noTenants: 'Keine Mieter', noTenantsDesc: 'Fügen Sie Ihren ersten Mieter hinzu', noProperty: 'Keine zugewiesene Immobilie', status: { active: 'Aktiv', inactive: 'Inaktiv' } },
-    payments: { title: 'Zahlungen', subtitle: 'Mietzahlungen verfolgen', addNew: 'Zahlung hinzufügen', received: 'Erhalten', pending: 'Ausstehend', overdueAmount: 'Überfällig', total: 'Gesamt', noPayments: 'Keine Zahlungen', noPaymentsDesc: 'Fügen Sie Ihre erste Zahlung hinzu', tenant: 'Mieter', property: 'Immobilie', type: 'Typ', period: 'Zeitraum', dueDate: 'Fällig am', amount: 'Betrag', markAsPaid: 'Als bezahlt markieren', filters: { allStatuses: 'Alle Status', allTypes: 'Alle Typen', allProperties: 'Alle Immobilien' }, status: { pending: 'Ausstehend', paid: 'Bezahlt', overdue: 'Überfällig', cancelled: 'Storniert' }, types: { rent: 'Miete', utilities: 'Nebenkosten', deposit: 'Kaution', other: 'Sonstiges' } },
+    payments: { title: 'Zahlungen', subtitle: 'Mietzahlungen verfolgen', addNew: 'Zahlung hinzufügen', received: 'Erhalten', pending: 'Ausstehend', overdueAmount: 'Überfällig', total: 'Gesamt', noPayments: 'Keine Zahlungen', noPaymentsDesc: 'Fügen Sie Ihre erste Zahlung hinzu', tenant: 'Mieter', property: 'Immobilie', type: 'Typ', period: 'Zeitraum', dueDate: 'Fällig am', amount: 'Betrag', markAsPaid: 'Als bezahlt markieren', filters: { allStatuses: 'Alle Status', allTypes: 'Alle Typen', allProperties: 'Alle Immobilien' },
+    status: {
+      pending: 'Ausstehend',
+      pendingConfirmation: 'Bestätigung ausstehend',
+      paid: 'Bezahlt',
+      overdue: 'Überfällig',
+      rejected: 'Abgelehnt',
+      cancelled: 'Storniert',
+    },
+    types: { rent: 'Miete', utilities: 'Nebenkosten', deposit: 'Kaution', other: 'Sonstiges' } },
     contracts: { title: 'Verträge', subtitle: 'Mietverträge verwalten', addNew: 'Neuer Vertrag', total: 'Gesamt', activeCount: 'Aktiv', expiringCount: 'Auslaufend', monthlyIncome: 'Monatliches Einkommen', expiringAlert: 'Bald auslaufende Verträge', expiringAlertDesc: 'Verträge laufen in 30 Tagen aus.', noContracts: 'Keine Verträge', noContractsDesc: 'Erstellen Sie Ihren ersten Mietvertrag', expiresIn: 'Läuft ab in', days: 'Tagen', payableBy: 'zahlbar bis', indefinite: 'unbefristet', status: { draft: 'Entwurf', active: 'Aktiv', expired: 'Abgelaufen', terminated: 'Gekündigt' }, types: { standard: 'Standardmiete', occasional: 'Gelegentliche Miete', institutional: 'Institutionelle Miete' } },
     settings: { title: 'Einstellungen', subtitle: 'Konto und Präferenzen verwalten', profile: 'Profil', notifications: 'Benachrichtigungen', billing: 'Abonnement', security: 'Sicherheit', language: 'Sprache', profileData: 'Profildaten', profileDataDesc: 'Aktualisieren Sie Ihre persönlichen Daten', name: 'Vollständiger Name', email: 'E-Mail', phone: 'Telefon', company: 'Firmenname', companyPlaceholder: 'Für Rechnungen', nip: 'Steuer-ID', saveChanges: 'Änderungen speichern', saved: 'Gespeichert',
     logout: 'Abmelden',
@@ -584,7 +621,16 @@ export const dictionaries: Record<Locale, Dictionary> = {
     dashboard: { title: 'Головна', welcome: 'Ласкаво просимо до Flatro! Керуйте своєю нерухомістю.', properties: 'Нерухомість', occupied: 'зайнято', vacant: 'вільно', tenants: 'Орендарі', activeTenants: 'Активних орендарів', pendingPayments: 'Очікувані платежі', overdue: 'прострочених', monthlyIncome: 'Місячний дохід', currentMonth: 'Поточний місяць', quickActions: 'Швидкі дії', addProperty: 'Додати нерухомість', addPropertyDesc: 'Додати нову квартиру або будинок', addTenant: 'Додати орендаря', addTenantDesc: 'Зареєструвати нового орендаря', addPayment: 'Додати платіж', addPaymentDesc: 'Зареєструвати отриманий платіж', recentActivity: 'Останні дії', noActivity: 'Немає активності', noActivityDesc: 'Додайте першу нерухомість, щоб почати' },
     properties: { title: 'Нерухомість', subtitle: 'Керування вашою нерухомістю', addNew: 'Додати нерухомість', total: 'Всього', vacantCount: 'Вільних', rentedCount: 'Зданих', noProperties: 'Немає нерухомості', noPropertiesDesc: 'Додайте першу нерухомість для початку керування', area: 'Площа', rooms: 'Кімнати', floor: 'Поверх', rent: 'Оренда', noTenant: 'Немає орендаря', status: { vacant: 'Вільно', occupied: 'Здано', reserved: 'Заброньовано' } },
     tenants: { title: 'Орендарі', subtitle: 'Керування орендарями вашої нерухомості', addNew: 'Додати орендаря', total: 'Всього', active: 'Активних', former: 'Колишніх', activeTenants: 'Активні орендарі', formerTenants: 'Колишні орендарі', noTenants: 'Немає орендарів', noTenantsDesc: 'Додайте першого орендаря для початку керування', noProperty: 'Не привязаний до нерухомості', status: { active: 'Активний', inactive: 'Неактивний' } },
-    payments: { title: 'Платежі', subtitle: 'Відстеження платежів від орендарів', addNew: 'Додати платіж', received: 'Отримано', pending: 'Очікується', overdueAmount: 'Прострочено', total: 'Всього', noPayments: 'Немає платежів', noPaymentsDesc: 'Додайте перший платіж для початку відстеження', tenant: 'Орендар', property: 'Нерухомість', type: 'Тип', period: 'Період', dueDate: 'Термін', amount: 'Сума', markAsPaid: 'Позначити як сплачений', filters: { allStatuses: 'Всі статуси', allTypes: 'Всі типи', allProperties: 'Вся нерухомість' }, status: { pending: 'Очікує', paid: 'Сплачено', overdue: 'Прострочено', cancelled: 'Скасовано' }, types: { rent: 'Оренда', utilities: 'Комунальні', deposit: 'Застава', other: 'Інше' } },
+    payments: { title: 'Платежі', subtitle: 'Відстеження платежів від орендарів', addNew: 'Додати платіж', received: 'Отримано', pending: 'Очікується', overdueAmount: 'Прострочено', total: 'Всього', noPayments: 'Немає платежів', noPaymentsDesc: 'Додайте перший платіж для початку відстеження', tenant: 'Орендар', property: 'Нерухомість', type: 'Тип', period: 'Період', dueDate: 'Термін', amount: 'Сума', markAsPaid: 'Позначити як сплачений', filters: { allStatuses: 'Всі статуси', allTypes: 'Всі типи', allProperties: 'Вся нерухомість' },
+    status: {
+      pending: 'Очікує',
+      pendingConfirmation: 'Очікує підтвердження',
+      paid: 'Сплачено',
+      overdue: 'Прострочено',
+      rejected: 'Відхилено',
+      cancelled: 'Скасовано',
+    },
+    types: { rent: 'Оренда', utilities: 'Комунальні', deposit: 'Застава', other: 'Інше' } },
     contracts: { title: 'Договори', subtitle: 'Керування договорами оренди', addNew: 'Новий договір', total: 'Всього', activeCount: 'Активних', expiringCount: 'Закінчуються', monthlyIncome: 'Місячний дохід', expiringAlert: 'Договори, що закінчуються', expiringAlertDesc: 'договорів закінчуються протягом 30 днів.', noContracts: 'Немає договорів', noContractsDesc: 'Створіть перший договір оренди', expiresIn: 'Закінчується через', days: 'днів', payableBy: 'оплата до', indefinite: 'безстроково', status: { draft: 'Чернетка', active: 'Активний', expired: 'Закінчився', terminated: 'Розірваний' }, types: { standard: 'Стандартна оренда', occasional: 'Випадкова оренда', institutional: 'Інституційна оренда' } },
     settings: { title: 'Налаштування', subtitle: 'Керування обліковим записом та налаштуваннями', profile: 'Профіль', notifications: 'Сповіщення', billing: 'Підписка', security: 'Безпека', language: 'Мова', profileData: 'Дані профілю', profileDataDesc: 'Оновіть ваші особисті дані', name: "Ім'я та прізвище", email: 'Email', phone: 'Телефон', company: 'Назва компанії', companyPlaceholder: 'Для рахунків', nip: 'ІПН', saveChanges: 'Зберегти зміни', saved: 'Збережено',
     logout: 'Вийти',
@@ -612,7 +658,16 @@ export const dictionaries: Record<Locale, Dictionary> = {
     dashboard: { title: 'Přehled', welcome: 'Vítejte ve Flatro! Spravujte své nemovitosti.', properties: 'Nemovitosti', occupied: 'obsazeno', vacant: 'volné', tenants: 'Nájemníci', activeTenants: 'Aktivních nájemníků', pendingPayments: 'Čekající platby', overdue: 'po splatnosti', monthlyIncome: 'Měsíční příjem', currentMonth: 'Aktuální měsíc', quickActions: 'Rychlé akce', addProperty: 'Přidat nemovitost', addPropertyDesc: 'Přidat nový byt nebo dům', addTenant: 'Přidat nájemníka', addTenantDesc: 'Zaregistrovat nového nájemníka', addPayment: 'Přidat platbu', addPaymentDesc: 'Zaregistrovat přijatou platbu', recentActivity: 'Poslední aktivita', noActivity: 'Žádná aktivita', noActivityDesc: 'Přidejte první nemovitost pro začátek' },
     properties: { title: 'Nemovitosti', subtitle: 'Správa vašich nemovitostí', addNew: 'Přidat nemovitost', total: 'Celkem', vacantCount: 'Volných', rentedCount: 'Pronajatých', noProperties: 'Žádné nemovitosti', noPropertiesDesc: 'Přidejte první nemovitost pro začátek správy', area: 'Plocha', rooms: 'Pokoje', floor: 'Patro', rent: 'Nájem', noTenant: 'Žádný nájemník', status: { vacant: 'Volné', occupied: 'Obsazeno', reserved: 'Rezervováno' } },
     tenants: { title: 'Nájemníci', subtitle: 'Správa nájemníků vašich nemovitostí', addNew: 'Přidat nájemníka', total: 'Celkem', active: 'Aktivních', former: 'Bývalých', activeTenants: 'Aktivní nájemníci', formerTenants: 'Bývalí nájemníci', noTenants: 'Žádní nájemníci', noTenantsDesc: 'Přidejte prvního nájemníka pro začátek správy', noProperty: 'Nepřiřazená nemovitost', status: { active: 'Aktivní', inactive: 'Neaktivní' } },
-    payments: { title: 'Platby', subtitle: 'Sledování plateb od nájemníků', addNew: 'Přidat platbu', received: 'Přijato', pending: 'Čekající', overdueAmount: 'Po splatnosti', total: 'Celkem', noPayments: 'Žádné platby', noPaymentsDesc: 'Přidejte první platbu pro začátek sledování', tenant: 'Nájemník', property: 'Nemovitost', type: 'Typ', period: 'Období', dueDate: 'Splatnost', amount: 'Částka', markAsPaid: 'Označit jako zaplacené', filters: { allStatuses: 'Všechny stavy', allTypes: 'Všechny typy', allProperties: 'Všechny nemovitosti' }, status: { pending: 'Čeká', paid: 'Zaplaceno', overdue: 'Po splatnosti', cancelled: 'Zrušeno' }, types: { rent: 'Nájem', utilities: 'Služby', deposit: 'Kauce', other: 'Ostatní' } },
+    payments: { title: 'Platby', subtitle: 'Sledování plateb od nájemníků', addNew: 'Přidat platbu', received: 'Přijato', pending: 'Čekající', overdueAmount: 'Po splatnosti', total: 'Celkem', noPayments: 'Žádné platby', noPaymentsDesc: 'Přidejte první platbu pro začátek sledování', tenant: 'Nájemník', property: 'Nemovitost', type: 'Typ', period: 'Období', dueDate: 'Splatnost', amount: 'Částka', markAsPaid: 'Označit jako zaplacené', filters: { allStatuses: 'Všechny stavy', allTypes: 'Všechny typy', allProperties: 'Všechny nemovitosti' },
+    status: {
+      pending: 'Čeká',
+      pendingConfirmation: 'Čeká na potvrzení',
+      paid: 'Zaplaceno',
+      overdue: 'Po splatnosti',
+      rejected: 'Zamítnuto',
+      cancelled: 'Zrušeno',
+    },
+    types: { rent: 'Nájem', utilities: 'Služby', deposit: 'Kauce', other: 'Ostatní' } },
     contracts: { title: 'Smlouvy', subtitle: 'Správa nájemních smluv', addNew: 'Nová smlouva', total: 'Celkem', activeCount: 'Aktivních', expiringCount: 'Končících', monthlyIncome: 'Měsíční příjem', expiringAlert: 'Končící smlouvy', expiringAlertDesc: 'smluv končí do 30 dnů.', noContracts: 'Žádné smlouvy', noContractsDesc: 'Vytvořte první nájemní smlouvu', expiresIn: 'Končí za', days: 'dní', payableBy: 'splatnost', indefinite: 'na dobu neurčitou', status: { draft: 'Koncept', active: 'Aktivní', expired: 'Vypršela', terminated: 'Ukončena' }, types: { standard: 'Standardní nájem', occasional: 'Příležitostný nájem', institutional: 'Institucionální nájem' } },
     settings: { title: 'Nastavení', subtitle: 'Správa účtu a preferencí', profile: 'Profil', notifications: 'Oznámení', billing: 'Předplatné', security: 'Zabezpečení', language: 'Jazyk', profileData: 'Údaje profilu', profileDataDesc: 'Aktualizujte své osobní údaje', name: 'Celé jméno', email: 'E-mail', phone: 'Telefon', company: 'Název firmy', companyPlaceholder: 'Pro faktury', nip: 'DIČ', saveChanges: 'Uložit změny', saved: 'Uloženo', logout: 'Odhlásit se',
     languageDesc: 'Vyberte jazyk rozhraní',
