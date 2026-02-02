@@ -1,9 +1,9 @@
-// app/api/payments/[id]/mark-paid/route.ts
+// app/api/payments/[id]/confirm/route.ts
 import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { NextRequest, NextResponse } from 'next/server'
 
-// POST — владелец отмечает платёж как оплаченный
+// POST — владелец подтверждает платёж
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -18,6 +18,7 @@ export async function POST(
 
     const { id } = await params
 
+    // Находим платёж и проверяем что он принадлежит текущему владельцу
     const payment = await prisma.payment.findFirst({
       where: {
         id,
@@ -33,9 +34,9 @@ export async function POST(
       return NextResponse.json({ error: 'Payment not found' }, { status: 404 })
     }
 
-    if (payment.status !== 'PENDING' && payment.status !== 'OVERDUE') {
+    if (payment.status !== 'PENDING_CONFIRMATION') {
       return NextResponse.json({ 
-        error: `Нельзя отметить как оплаченный платёж со статусом "${payment.status}"` 
+        error: `Нельзя подтвердить платёж со статусом "${payment.status}"` 
       }, { status: 400 })
     }
 
@@ -43,19 +44,20 @@ export async function POST(
       where: { id },
       data: {
         status: 'PAID',
-        paidDate: new Date(),
         confirmedAt: new Date(),
+        paidDate: new Date(),
       },
       select: {
         id: true,
         status: true,
         paidDate: true,
+        confirmedAt: true,
       }
     })
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Error marking payment as paid:', error)
+    console.error('Error confirming payment:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

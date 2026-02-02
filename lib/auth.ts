@@ -9,8 +9,24 @@ export async function getCurrentUser() {
   if (!user) return null
 
   // Найти или создать пользователя в БД
+  // Используем select чтобы запрашивать только существующие поля
   let dbUser = await prisma.user.findUnique({
-    where: { id: user.id }
+    where: { id: user.id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      phone: true,
+      isOwner: true,
+      isTenant: true,
+      bankName: true,
+      iban: true,
+      accountHolder: true,
+      stripeAccountId: true,
+      stripeOnboarded: true,
+      createdAt: true,
+      updatedAt: true,
+    }
   })
 
   if (!dbUser) {
@@ -19,6 +35,23 @@ export async function getCurrentUser() {
         id: user.id,
         email: user.email!,
         name: user.user_metadata?.name || null,
+        isOwner: false,
+        isTenant: false,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        isOwner: true,
+        isTenant: true,
+        bankName: true,
+        iban: true,
+        accountHolder: true,
+        stripeAccountId: true,
+        stripeOnboarded: true,
+        createdAt: true,
+        updatedAt: true,
       }
     })
   }

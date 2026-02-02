@@ -1,27 +1,56 @@
 // app/(dashboard)/layout.tsx
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { Home, Users, Building2, CreditCard, FileText, Settings, Gauge, Menu, X, LogOut, Loader2 } from 'lucide-react'
+import {
+  Home, Users, Building2, CreditCard, FileText, Settings, Gauge,
+  Menu, X, LogOut, Loader2, MessageSquare, AlertTriangle, ArrowRightLeft
+} from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
 
+interface UserInfo {
+  isOwner: boolean
+  isTenant: boolean
+}
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
+  const [userInfo, setUserInfo] = useState<UserInfo | null>(null)
   const pathname = usePathname()
   const router = useRouter()
   const { t } = useLocale()
 
-  const navItems = [
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data && !data.error) {
+          setUserInfo({ isOwner: data.isOwner, isTenant: data.isTenant })
+        }
+      })
+      .catch(() => {})
+  }, [])
+
+  const isDualRole = userInfo?.isOwner && userInfo?.isTenant
+
+  const ownerNavItems = [
     { href: '/dashboard', icon: Gauge, label: t.nav.dashboard },
     { href: '/properties', icon: Home, label: t.nav.properties },
     { href: '/tenants', icon: Users, label: t.nav.tenants },
     { href: '/payments', icon: CreditCard, label: t.nav.payments },
     { href: '/contracts', icon: FileText, label: t.nav.contracts },
+  ]
+
+  const tenantNavItems = [
+    { href: '/tenant/dashboard', icon: Home, label: 'Моё жильё' },
+    { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
+    { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },
+    { href: '/tenant/tickets', icon: AlertTriangle, label: 'Заявки' },
   ]
 
   const isActive = (href: string) => {
@@ -31,6 +60,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const handleLogout = async () => {
     setLoggingOut(true)
+    try { localStorage.removeItem('pendingInviteCode') } catch {}
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
@@ -52,7 +82,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
 
-      {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div className="lg:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setSidebarOpen(false)} />
       )}
@@ -76,7 +105,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         <nav className="flex flex-col h-[calc(100vh-4rem)]">
           <div className="flex-1 p-4 space-y-1 overflow-y-auto">
-            {navItems.map((item) => {
+            
+            {isDualRole && (
+              <div className="px-3 pt-1 pb-2">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-blue-500">Владелец</span>
+              </div>
+            )}
+            
+            {ownerNavItems.map((item) => {
               const Icon = item.icon
               const active = isActive(item.href)
               return (
@@ -94,6 +130,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               )
             })}
             
+            {isDualRole && (
+              <>
+                <div className="pt-4 mt-3 border-t border-gray-200">
+                  <div className="px-3 pt-1 pb-2">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-green-500">Арендатор</span>
+                  </div>
+                </div>
+                {tenantNavItems.map((item) => {
+                  const Icon = item.icon
+                  const active = isActive(item.href)
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setSidebarOpen(false)}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${
+                        active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
+                      <span>{item.label}</span>
+                    </Link>
+                  )
+                })}
+              </>
+            )}
+
+            {/* Единые настройки */}
             <div className="pt-4 mt-4 border-t">
               <Link
                 href="/settings"
@@ -108,8 +172,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
           </div>
 
-          {/* Bottom section: Language + Logout */}
           <div className="p-4 border-t space-y-2">
+            {isDualRole && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg mb-1">
+                <ArrowRightLeft className="h-4 w-4 text-gray-500" />
+                <span className="text-xs text-gray-600">Владелец + Арендатор</span>
+              </div>
+            )}
+            
             <LanguageSwitcher />
             
             <button
@@ -117,18 +187,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               disabled={loggingOut}
               className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors text-red-600 hover:bg-red-50 w-full"
             >
-              {loggingOut ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <LogOut className="h-5 w-5" />
-              )}
+              {loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
               <span>{t.settings.logout}</span>
             </button>
           </div>
         </nav>
       </aside>
 
-      {/* Main Content */}
       <div className="lg:pl-64">
         <div className="h-16 lg:hidden" />
         <main className="p-4 sm:p-6 lg:p-8 min-h-screen">

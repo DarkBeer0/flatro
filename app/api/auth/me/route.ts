@@ -12,10 +12,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Только ищем пользователя, НЕ создаём автоматически
+    // Явно указываем select чтобы не запрашивать несуществующие колонки
     const dbUser = await prisma.user.findUnique({
       where: { id: authUser.id },
-      include: {
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        isOwner: true,
+        isTenant: true,
+        bankName: true,
+        iban: true,
+        accountHolder: true,
         tenantProfile: {
           where: { isActive: true },
           include: {
@@ -36,7 +45,6 @@ export async function GET() {
     }
 
     // Вычисляем "основную" роль для совместимости со старым кодом
-    // Приоритет: если есть обе роли - показываем как OWNER
     const primaryRole = dbUser.isOwner ? 'OWNER' : (dbUser.isTenant ? 'TENANT' : 'OWNER')
 
     return NextResponse.json({

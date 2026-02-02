@@ -3,11 +3,16 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import { User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2, AlertCircle, Home, Users, ToggleLeft, ToggleRight } from 'lucide-react'
+import {
+  User, Bell, CreditCard, Shield, Globe, LogOut, Check, Loader2,
+  AlertCircle, Home as HomeIcon, Users, ToggleLeft, ToggleRight,
+  ChevronDown, Building2, Phone, Mail, KeyRound
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/lib/i18n/context'
 import { locales, localeNames, Locale } from '@/lib/i18n/dictionaries'
 import { createClient } from '@/lib/supabase/client'
@@ -33,6 +38,19 @@ interface RolesInfo {
   hasActiveTenancy: boolean
 }
 
+interface TenantInfo {
+  id: string
+  firstName: string
+  lastName: string
+  property: {
+    name: string
+    address: string
+    city: string
+  } | null
+  moveInDate: string | null
+  isActive: boolean
+}
+
 function SettingsContent() {
   const router = useRouter()
   const { t, locale, setLocale } = useLocale()
@@ -40,16 +58,18 @@ function SettingsContent() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
-  
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [userData, setUserData] = useState<UserData | null>(null)
-  
-  // Состояния для управления ролями
+
   const [rolesInfo, setRolesInfo] = useState<RolesInfo | null>(null)
   const [rolesLoading, setRolesLoading] = useState(false)
   const [rolesError, setRolesError] = useState<string | null>(null)
   const [rolesSaving, setRolesSaving] = useState(false)
+
+  const [tenantInfo, setTenantInfo] = useState<TenantInfo | null>(null)
 
   const [formData, setFormData] = useState({
     name: '',
@@ -61,30 +81,26 @@ function SettingsContent() {
   })
 
   useEffect(() => {
-    loadUserData()
-    loadRolesInfo()
+    loadAllData()
   }, [])
 
-  const loadUserData = async () => {
+  const loadAllData = async () => {
     setLoading(true)
     setLoadError(null)
 
     try {
       const res = await fetch('/api/user')
-      
+
       if (!res.ok) {
-        if (res.status === 404) {
-          setLoadError('Профиль не найден. Попробуйте войти заново.')
-        } else {
-          setLoadError('Не удалось загрузить данные профиля')
-        }
+        setLoadError(res.status === 404
+          ? 'Профиль не найден. Попробуйте войти заново.'
+          : 'Не удалось загрузить данные профиля')
         setLoading(false)
         return
       }
 
       const data: UserData = await res.json()
       setUserData(data)
-      
       setFormData({
         name: data.name || '',
         email: data.email || '',
@@ -93,6 +109,13 @@ function SettingsContent() {
         iban: data.iban || '',
         accountHolder: data.accountHolder || '',
       })
+
+      // Параллельно загружаем роли и профиль жильца
+      const promises: Promise<void>[] = [loadRolesInfo()]
+      if (data.isTenant) {
+        promises.push(loadTenantInfo())
+      }
+      await Promise.all(promises)
     } catch (error) {
       console.error('Error loading user data:', error)
       setLoadError('Ошибка подключения. Проверьте интернет-соединение.')
@@ -103,18 +126,22 @@ function SettingsContent() {
 
   const loadRolesInfo = async () => {
     setRolesLoading(true)
-    setRolesError(null)
-
     try {
       const res = await fetch('/api/user/roles')
-      if (res.ok) {
-        const data = await res.json()
-        setRolesInfo(data)
-      }
+      if (res.ok) setRolesInfo(await res.json())
     } catch (error) {
-      console.error('Error loading roles info:', error)
+      console.error('Error loading roles:', error)
     } finally {
       setRolesLoading(false)
+    }
+  }
+
+  const loadTenantInfo = async () => {
+    try {
+      const res = await fetch('/api/tenant/profile')
+      if (res.ok) setTenantInfo(await res.json())
+    } catch (error) {
+      console.error('Error loading tenant info:', error)
     }
   }
 
@@ -125,7 +152,6 @@ function SettingsContent() {
 
   const handleSave = async () => {
     setSaving(true)
-    
     try {
       const res = await fetch('/api/user', {
         method: 'PUT',
@@ -138,7 +164,6 @@ function SettingsContent() {
           accountHolder: formData.accountHolder,
         }),
       })
-
       if (res.ok) {
         const updatedUser = await res.json()
         setUserData(updatedUser)
@@ -146,23 +171,19 @@ function SettingsContent() {
         setTimeout(() => setSaved(false), 3000)
       } else {
         const error = await res.json()
-        alert(error.error || 'Не удалось сохранить изменения')
+        alert(error.error || 'Не удалось сохранить')
       }
-    } catch (error) {
-      console.error('Error saving user data:', error)
-      alert('Ошибка сохранения. Попробуйте позже.')
+    } catch {
+      alert('Ошибка сохранения')
     } finally {
       setSaving(false)
     }
   }
 
-  // Переключение роли
   const handleToggleRole = async (role: 'owner' | 'tenant', enable: boolean) => {
     if (!rolesInfo) return
-
     setRolesSaving(true)
     setRolesError(null)
-
     try {
       const res = await fetch('/api/user/roles', {
         method: 'PUT',
@@ -172,28 +193,15 @@ function SettingsContent() {
           enableTenant: role === 'tenant' ? enable : undefined,
         }),
       })
-
       const data = await res.json()
-
       if (res.ok) {
-        // Обновляем состояние
-        setRolesInfo(prev => prev ? {
-          ...prev,
-          isOwner: data.isOwner,
-          isTenant: data.isTenant,
-        } : null)
-        
-        setUserData(prev => prev ? {
-          ...prev,
-          isOwner: data.isOwner,
-          isTenant: data.isTenant,
-        } : null)
+        setRolesInfo(prev => prev ? { ...prev, isOwner: data.isOwner, isTenant: data.isTenant } : null)
+        setUserData(prev => prev ? { ...prev, isOwner: data.isOwner, isTenant: data.isTenant } : null)
       } else {
         setRolesError(data.error || 'Не удалось изменить роль')
       }
-    } catch (error) {
-      console.error('Error toggling role:', error)
-      setRolesError('Ошибка сети. Попробуйте позже.')
+    } catch {
+      setRolesError('Ошибка сети')
     } finally {
       setRolesSaving(false)
       loadRolesInfo()
@@ -202,6 +210,7 @@ function SettingsContent() {
 
   const handleLogout = async () => {
     setLoggingOut(true)
+    try { localStorage.removeItem('pendingInviteCode') } catch {}
     const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
@@ -215,35 +224,35 @@ function SettingsContent() {
     return `${local.slice(0, 2)}${'*'.repeat(Math.min(local.length - 2, 5))}@${domain}`
   }
 
-  // --- ВЫЧИСЛЯЕМ disabled ДЛЯ КНОПОК РОЛЕЙ ---
-  // Включить роль = ВСЕГДА можно
-  // Отключить роль = только если нет активных данных И есть другая активная роль
   const getOwnerToggleDisabled = (): boolean => {
     if (!rolesInfo || rolesSaving) return true
-    // Если роль ВЫКЛЮЧЕНА → кнопка включения ВСЕГДА доступна
     if (!rolesInfo.isOwner) return false
-    // Если роль ВКЛЮЧЕНА → проверяем можно ли отключить
-    // Нельзя если есть квартиры ИЛИ это единственная роль
     return !rolesInfo.canDisableOwner || !rolesInfo.isTenant
   }
 
   const getTenantToggleDisabled = (): boolean => {
     if (!rolesInfo || rolesSaving) return true
-    // Если роль ВЫКЛЮЧЕНА → кнопка включения ВСЕГДА доступна
     if (!rolesInfo.isTenant) return false
-    // Если роль ВКЛЮЧЕНА → проверяем можно ли отключить
-    // Нельзя если есть активная аренда ИЛИ это единственная роль
     return !rolesInfo.canDisableTenant || !rolesInfo.isOwner
   }
 
+  // === Табы на основе ролей ===
   const tabs = [
-    { id: 'profile', label: t.settings.profile, icon: User },
+    { id: 'profile', label: t.settings?.profile || 'Профиль', icon: User },
+    ...(userData?.isTenant ? [{ id: 'housing', label: 'Моё жильё', icon: Building2 }] : []),
     { id: 'roles', label: 'Роли', icon: Users },
-    { id: 'language', label: t.settings.language, icon: Globe },
     ...(userData?.isOwner ? [{ id: 'bank', label: 'Реквизиты', icon: CreditCard }] : []),
-    { id: 'notifications', label: t.settings.notifications, icon: Bell },
-    { id: 'security', label: t.settings.security, icon: Shield },
+    { id: 'language', label: t.settings?.language || 'Язык', icon: Globe },
+    { id: 'notifications', label: t.settings?.notifications || 'Уведомления', icon: Bell },
+    { id: 'security', label: t.settings?.security || 'Безопасность', icon: Shield },
   ]
+
+  const activeTabData = tabs.find(tab => tab.id === activeTab)
+
+  const switchTab = (id: string) => {
+    setActiveTab(id)
+    setMobileMenuOpen(false)
+  }
 
   if (loading) {
     return (
@@ -263,8 +272,8 @@ function SettingsContent() {
           </div>
           <p className="text-gray-600 mb-4">{loadError}</p>
           <div className="flex gap-3">
-            <Button onClick={loadUserData}>Попробовать снова</Button>
-            <Button variant="outline" onClick={handleLogout}>Выйти и войти заново</Button>
+            <Button onClick={loadAllData}>Попробовать снова</Button>
+            <Button variant="outline" onClick={handleLogout}>Выйти</Button>
           </div>
         </Card>
       </div>
@@ -273,129 +282,154 @@ function SettingsContent() {
 
   return (
     <div className="w-full max-w-4xl mx-auto">
+      {/* Header */}
       <div className="mb-6">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.settings.title}</h1>
-        <p className="text-gray-500 mt-1">{t.settings.subtitle}</p>
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.settings?.title || 'Настройки'}</h1>
+        <p className="text-gray-500 mt-1">{t.settings?.subtitle || 'Управление аккаунтом и предпочтениями'}</p>
+        {userData && (userData.isOwner || userData.isTenant) && (
+          <div className="flex gap-2 mt-3">
+            {userData.isOwner && <Badge className="bg-blue-100 text-blue-700">Владелец</Badge>}
+            {userData.isTenant && <Badge className="bg-green-100 text-green-700">Арендатор</Badge>}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col lg:flex-row gap-6">
-        {/* Sidebar */}
-        <div className="lg:w-64 flex-shrink-0">
-          <Card className="p-2">
-            <nav className="space-y-1">
+        {/* === MOBILE: dropdown tab selector === */}
+        <div className="lg:hidden relative">
+          <button
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="w-full flex items-center justify-between bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              {activeTabData && <activeTabData.icon className="h-5 w-5 text-blue-600" />}
+              <span className="font-medium text-gray-900">{activeTabData?.label}</span>
+            </div>
+            <ChevronDown className={`h-5 w-5 text-gray-400 transition-transform duration-200 ${mobileMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {mobileMenuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMobileMenuOpen(false)} />
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon
+                  const isActive = activeTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => switchTab(tab.id)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
+                        isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      <Icon className={`h-5 w-5 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
+                      {tab.label}
+                      {isActive && <Check className="h-4 w-4 text-blue-600 ml-auto" />}
+                    </button>
+                  )
+                })}
+                <div className="border-t">
+                  <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left text-red-600 hover:bg-red-50"
+                  >
+                    {loggingOut ? <Loader2 className="h-5 w-5 animate-spin" /> : <LogOut className="h-5 w-5" />}
+                    {t.settings?.logout || 'Выйти'}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* === DESKTOP: sidebar tabs === */}
+        <div className="hidden lg:block lg:w-56 flex-shrink-0">
+          <Card className="p-2 sticky top-8">
+            <nav className="space-y-0.5">
               {tabs.map((tab) => {
                 const Icon = tab.icon
+                const isActive = activeTab === tab.id
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                      activeTab === tab.id
-                        ? 'bg-blue-50 text-blue-700 font-medium'
-                        : 'text-gray-700 hover:bg-gray-50'
+                    onClick={() => switchTab(tab.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
+                      isActive ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                     }`}
                   >
-                    <Icon className={`h-5 w-5 ${activeTab === tab.id ? 'text-blue-600' : ''}`} />
+                    <Icon className={`h-4 w-4 flex-shrink-0 ${isActive ? 'text-blue-600' : ''}`} />
                     {tab.label}
                   </button>
                 )
               })}
-              
               <div className="pt-2 mt-2 border-t">
                 <button
                   onClick={handleLogout}
                   disabled={loggingOut}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-red-600 hover:bg-red-50 transition-colors"
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm text-red-600 hover:bg-red-50"
                 >
-                  {loggingOut ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <LogOut className="h-5 w-5" />
-                  )}
-                  {t.settings.logout}
+                  {loggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                  {t.settings?.logout || 'Выйти'}
                 </button>
               </div>
             </nav>
           </Card>
         </div>
 
-        {/* Content */}
-        <div className="flex-1">
-          {/* Profile Tab */}
+        {/* === CONTENT === */}
+        <div className="flex-1 min-w-0">
+
+          {/* ── Profile ── */}
           {activeTab === 'profile' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">{t.settings.profileData}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings.profileDataDesc}</p>
+              <h2 className="text-lg font-semibold mb-1">{t.settings?.profileData || 'Личные данные'}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.profileDataDesc || 'Основная информация вашего профиля'}</p>
 
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">{t.settings.name}</Label>
-                    <Input
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      placeholder="Введите имя"
-                    />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name">{t.settings?.name || 'Имя'}</Label>
+                    <div className="relative">
+                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input id="name" name="name" value={formData.name} onChange={handleChange} placeholder="Ваше имя" className="pl-10" />
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="email">{t.settings.email}</Label>
-                    <Input
-                      id="email"
-                      value={maskEmail(formData.email)}
-                      disabled
-                      className="bg-gray-50"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Email нельзя изменить</p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email">{t.settings?.email || 'Email'}</Label>
+                    <div className="relative">
+                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input id="email" value={maskEmail(formData.email)} disabled className="pl-10 bg-gray-50" />
+                    </div>
+                    <p className="text-xs text-gray-400">Email нельзя изменить</p>
                   </div>
-                  <div>
-                    <Label htmlFor="phone">{t.settings.phone}</Label>
-                    <Input
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      placeholder="+48 123 456 789"
-                    />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="phone">{t.settings?.phone || 'Телефон'}</Label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                      <Input id="phone" name="phone" value={formData.phone} onChange={handleChange} placeholder="+48 123 456 789" className="pl-10" />
+                    </div>
                   </div>
-                  <div>
+                  <div className="space-y-1.5">
                     <Label>Активные роли</Label>
-                    <div className="flex gap-2 mt-1">
-                      {userData?.isOwner && (
-                        <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm">
-                          Владелец
-                        </span>
-                      )}
-                      {userData?.isTenant && (
-                        <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-sm">
-                          Жилец
-                        </span>
-                      )}
+                    <div className="flex gap-2 mt-1.5">
+                      {userData?.isOwner && <span className="px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium">Владелец</span>}
+                      {userData?.isTenant && <span className="px-3 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-sm font-medium">Арендатор</span>}
                       {!userData?.isOwner && !userData?.isTenant && (
-                        <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-sm">
-                          Нет ролей — выберите роль
-                        </span>
+                        <span className="px-3 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-sm">Нет ролей</span>
                       )}
                     </div>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 pt-4">
+                <div className="flex items-center gap-3 pt-4 border-t">
                   <Button onClick={handleSave} disabled={saving}>
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        {t.common.loading}
-                      </>
-                    ) : (
-                      t.settings.saveChanges
-                    )}
+                    {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Сохранение...</> : (t.settings?.saveChanges || 'Сохранить')}
                   </Button>
                   {saved && (
                     <span className="text-green-600 text-sm flex items-center gap-1">
-                      <Check className="h-4 w-4" />
-                      {t.settings.saved}
+                      <Check className="h-4 w-4" />{t.settings?.saved || 'Сохранено!'}
                     </span>
                   )}
                 </div>
@@ -403,149 +437,168 @@ function SettingsContent() {
             </Card>
           )}
 
-          {/* Roles Tab */}
+          {/* ── Моё жильё (tenant) ── */}
+          {activeTab === 'housing' && userData?.isTenant && (
+            <div className="space-y-4">
+              {tenantInfo?.property ? (
+                <Card className="p-6">
+                  <h2 className="text-lg font-semibold mb-1">Моё жильё</h2>
+                  <p className="text-sm text-gray-500 mb-5">Информация о вашей текущей квартире</p>
+
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border border-blue-100">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-white rounded-xl shadow-sm">
+                        <Building2 className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-semibold text-gray-900 text-lg">{tenantInfo.property.name}</h3>
+                        <p className="text-gray-600 mt-0.5">{tenantInfo.property.address}</p>
+                        <p className="text-gray-500 text-sm">{tenantInfo.property.city}</p>
+
+                        <div className="flex flex-wrap items-center gap-3 mt-3">
+                          <Badge className={tenantInfo.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}>
+                            {tenantInfo.isActive ? 'Активный арендатор' : 'Неактивный'}
+                          </Badge>
+                          {tenantInfo.moveInDate && (
+                            <span className="text-sm text-gray-500">
+                              Заселение: {new Date(tenantInfo.moveInDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-5">
+                    <button
+                      onClick={() => router.push('/tenant/payments')}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
+                    >
+                      <CreditCard className="h-5 w-5 text-blue-600" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Мои платежи</p>
+                        <p className="text-xs text-gray-500">Просмотр и оплата</p>
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => router.push('/tenant/tickets')}
+                      className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-orange-300 hover:bg-orange-50 transition-colors text-left"
+                    >
+                      <AlertCircle className="h-5 w-5 text-orange-500" />
+                      <div>
+                        <p className="font-medium text-gray-900 text-sm">Заявки</p>
+                        <p className="text-xs text-gray-500">Сообщить о проблеме</p>
+                      </div>
+                    </button>
+                  </div>
+                </Card>
+              ) : (
+                <Card className="p-8 text-center">
+                  <Building2 className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <h3 className="font-medium text-gray-900 mb-1">Нет активного жилья</h3>
+                  <p className="text-sm text-gray-500">Вас ещё не добавили в квартиру.</p>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* ── Roles ── */}
           {activeTab === 'roles' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Управление ролями</h2>
-              <p className="text-sm text-gray-500 mb-6">
-                Настройте какие функции вам доступны в системе
-              </p>
+              <p className="text-sm text-gray-500 mb-6">Настройте какие функции вам доступны</p>
 
               {rolesError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-red-700 text-sm">
-                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
-                  {rolesError}
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />{rolesError}
                 </div>
               )}
 
-              {/* Предупреждение если обе роли выключены */}
               {rolesInfo && !rolesInfo.isOwner && !rolesInfo.isTenant && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-4 text-yellow-800 text-sm">
-                  ⚠️ У вас нет активных ролей. Пожалуйста, включите хотя бы одну роль.
+                  ⚠️ Нет активных ролей. Включите хотя бы одну.
                 </div>
               )}
 
               {rolesLoading ? (
-                <div className="flex justify-center py-8">
-                  <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-                </div>
+                <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-blue-600" /></div>
               ) : rolesInfo && (
                 <div className="space-y-4">
-                  {/* Роль владельца */}
-                  <div className={`p-4 rounded-lg border-2 ${rolesInfo.isOwner ? 'border-blue-200 bg-blue-50' : 'border-gray-200'}`}>
+                  {/* Owner role */}
+                  <div className={`p-4 rounded-xl border-2 transition-colors ${rolesInfo.isOwner ? 'border-blue-200 bg-blue-50/50' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-lg ${rolesInfo.isOwner ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                          <Home className={`h-5 w-5 ${rolesInfo.isOwner ? 'text-blue-600' : 'text-gray-400'}`} />
+                          <HomeIcon className={`h-5 w-5 ${rolesInfo.isOwner ? 'text-blue-600' : 'text-gray-400'}`} />
                         </div>
                         <div>
                           <h3 className="font-medium text-gray-900">Режим владельца</h3>
-                          <p className="text-sm text-gray-500">
-                            Добавляйте квартиры, приглашайте жильцов, управляйте платежами
-                          </p>
+                          <p className="text-sm text-gray-500">Квартиры, жильцы, платежи, договоры</p>
                           {rolesInfo.isOwner && rolesInfo.ownedPropertiesCount > 0 && (
-                            <p className="text-xs text-blue-600 mt-1">
-                              У вас {rolesInfo.ownedPropertiesCount} объект(ов) недвижимости
-                            </p>
+                            <p className="text-xs text-blue-600 mt-1">{rolesInfo.ownedPropertiesCount} объект(ов)</p>
                           )}
                           {rolesInfo.isOwner && !rolesInfo.canDisableOwner && (
-                            <p className="text-xs text-orange-600 mt-1">
-                              ⚠️ Нельзя отключить — есть активные квартиры
-                            </p>
+                            <p className="text-xs text-orange-600 mt-1">⚠️ Нельзя отключить — есть квартиры</p>
                           )}
                           {rolesInfo.isOwner && rolesInfo.canDisableOwner && !rolesInfo.isTenant && (
-                            <p className="text-xs text-orange-600 mt-1">
-                              ⚠️ Нельзя отключить — это единственная роль. Сначала включите роль жильца.
-                            </p>
+                            <p className="text-xs text-orange-600 mt-1">⚠️ Единственная роль</p>
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)}
-                        disabled={getOwnerToggleDisabled()}
-                        className="flex-shrink-0"
-                      >
-                        {rolesInfo.isOwner ? (
-                          <ToggleRight className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-blue-600 hover:text-blue-700'}`} />
-                        ) : (
-                          <ToggleLeft className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-blue-500'}`} />
-                        )}
+                      <button onClick={() => handleToggleRole('owner', !rolesInfo.isOwner)} disabled={getOwnerToggleDisabled()} className="flex-shrink-0 p-1">
+                        {rolesInfo.isOwner
+                          ? <ToggleRight className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-blue-600 hover:text-blue-700'}`} />
+                          : <ToggleLeft className={`h-8 w-8 ${getOwnerToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-blue-500'}`} />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Роль жильца */}
-                  <div className={`p-4 rounded-lg border-2 ${rolesInfo.isTenant ? 'border-green-200 bg-green-50' : 'border-gray-200'}`}>
+                  {/* Tenant role */}
+                  <div className={`p-4 rounded-xl border-2 transition-colors ${rolesInfo.isTenant ? 'border-green-200 bg-green-50/50' : 'border-gray-200'}`}>
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-lg ${rolesInfo.isTenant ? 'bg-green-100' : 'bg-gray-100'}`}>
                           <Users className={`h-5 w-5 ${rolesInfo.isTenant ? 'text-green-600' : 'text-gray-400'}`} />
                         </div>
                         <div>
-                          <h3 className="font-medium text-gray-900">Режим жильца</h3>
-                          <p className="text-sm text-gray-500">
-                            Просматривайте платежи, общайтесь с владельцем, создавайте заявки
-                          </p>
+                          <h3 className="font-medium text-gray-900">Режим арендатора</h3>
+                          <p className="text-sm text-gray-500">Платежи, сообщения, заявки</p>
                           {rolesInfo.hasActiveTenancy && (
-                            <p className="text-xs text-green-600 mt-1">
-                              Вы арендуете квартиру
-                            </p>
+                            <p className="text-xs text-green-600 mt-1">Активная аренда</p>
                           )}
                           {rolesInfo.isTenant && !rolesInfo.canDisableTenant && (
-                            <p className="text-xs text-orange-600 mt-1">
-                              ⚠️ Нельзя отключить — есть активная аренда
-                            </p>
+                            <p className="text-xs text-orange-600 mt-1">⚠️ Нельзя отключить — активная аренда</p>
                           )}
                           {rolesInfo.isTenant && rolesInfo.canDisableTenant && !rolesInfo.isOwner && (
-                            <p className="text-xs text-orange-600 mt-1">
-                              ⚠️ Нельзя отключить — это единственная роль. Сначала включите роль владельца.
-                            </p>
+                            <p className="text-xs text-orange-600 mt-1">⚠️ Единственная роль</p>
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)}
-                        disabled={getTenantToggleDisabled()}
-                        className="flex-shrink-0"
-                      >
-                        {rolesInfo.isTenant ? (
-                          <ToggleRight className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-green-600 hover:text-green-700'}`} />
-                        ) : (
-                          <ToggleLeft className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-green-500'}`} />
-                        )}
+                      <button onClick={() => handleToggleRole('tenant', !rolesInfo.isTenant)} disabled={getTenantToggleDisabled()} className="flex-shrink-0 p-1">
+                        {rolesInfo.isTenant
+                          ? <ToggleRight className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-green-600 hover:text-green-700'}`} />
+                          : <ToggleLeft className={`h-8 w-8 ${getTenantToggleDisabled() ? 'text-gray-300' : 'text-gray-400 hover:text-green-500'}`} />}
                       </button>
                     </div>
                   </div>
 
-                  {/* Подсказка */}
-                  <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+                  {/* Hint */}
+                  <div className="bg-gray-50 rounded-xl p-4 text-sm text-gray-600">
                     <p className="font-medium mb-2">💡 Как это работает:</p>
-                    <ul className="list-disc list-inside space-y-1">
-                      <li>Вы можете включить <strong>обе роли</strong> одновременно</li>
-                      <li>Нельзя отключить роль владельца если у вас есть квартиры</li>
-                      <li>Нельзя отключить роль жильца если вы активно арендуете</li>
+                    <ul className="list-disc list-inside space-y-1 text-gray-500">
+                      <li>Можно включить <strong>обе роли</strong> одновременно</li>
+                      <li>Нельзя отключить роль с активными данными</li>
                       <li>Должна быть хотя бы одна активная роль</li>
                     </ul>
                   </div>
 
-                  {/* Кнопки быстрого перехода */}
                   {rolesInfo.isOwner && rolesInfo.isTenant && (
                     <div className="flex gap-3 pt-4 border-t">
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push('/dashboard')}
-                        className="flex-1"
-                      >
-                        <Home className="h-4 w-4 mr-2" />
-                        Панель владельца
+                      <Button variant="outline" onClick={() => router.push('/dashboard')} className="flex-1">
+                        <HomeIcon className="h-4 w-4 mr-2" />Панель владельца
                       </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push('/tenant/dashboard')}
-                        className="flex-1"
-                      >
-                        <Users className="h-4 w-4 mr-2" />
-                        Панель жильца
+                      <Button variant="outline" onClick={() => router.push('/tenant/dashboard')} className="flex-1">
+                        <Users className="h-4 w-4 mr-2" />Панель арендатора
                       </Button>
                     </div>
                   )}
@@ -554,136 +607,110 @@ function SettingsContent() {
             </Card>
           )}
 
-          {/* Bank Details Tab */}
+          {/* ── Bank Details (owner only) ── */}
           {activeTab === 'bank' && userData?.isOwner && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold mb-1">Банковские реквизиты</h2>
-              <p className="text-sm text-gray-500 mb-6">
-                Эти данные будут показаны жильцам для оплаты аренды
-              </p>
+              <p className="text-sm text-gray-500 mb-6">Эти данные будут показаны жильцам для оплаты аренды</p>
 
               <div className="space-y-4">
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="bankName">Название банка</Label>
-                  <Input
-                    id="bankName"
-                    name="bankName"
-                    value={formData.bankName}
-                    onChange={handleChange}
-                    placeholder="PKO Bank Polski"
-                  />
+                  <Input id="bankName" name="bankName" value={formData.bankName} onChange={handleChange} placeholder="PKO Bank Polski" />
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="iban">IBAN / Номер счёта</Label>
-                  <Input
-                    id="iban"
-                    name="iban"
-                    value={formData.iban}
-                    onChange={handleChange}
-                    placeholder="PL00 0000 0000 0000 0000 0000 0000"
-                  />
+                  <Input id="iban" name="iban" value={formData.iban} onChange={handleChange} placeholder="PL00 0000 0000 0000 0000 0000 0000" />
                 </div>
-                <div>
+                <div className="space-y-1.5">
                   <Label htmlFor="accountHolder">Получатель</Label>
-                  <Input
-                    id="accountHolder"
-                    name="accountHolder"
-                    value={formData.accountHolder}
-                    onChange={handleChange}
-                    placeholder="Имя Фамилия или название компании"
-                  />
+                  <Input id="accountHolder" name="accountHolder" value={formData.accountHolder} onChange={handleChange} placeholder="Имя Фамилия или название компании" />
                 </div>
-
-                <div className="flex items-center gap-3 pt-4">
+                <div className="flex items-center gap-3 pt-4 border-t">
                   <Button onClick={handleSave} disabled={saving}>
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Сохранение...
-                      </>
-                    ) : (
-                      'Сохранить реквизиты'
-                    )}
+                    {saving ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Сохранение...</> : 'Сохранить реквизиты'}
                   </Button>
                   {saved && (
-                    <span className="text-green-600 text-sm flex items-center gap-1">
-                      <Check className="h-4 w-4" />
-                      Сохранено!
-                    </span>
+                    <span className="text-green-600 text-sm flex items-center gap-1"><Check className="h-4 w-4" />Сохранено!</span>
                   )}
                 </div>
               </div>
             </Card>
           )}
 
-          {/* Language Tab */}
+          {/* ── Language ── */}
           {activeTab === 'language' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">{t.settings.language}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings.languageDesc}</p>
+              <h2 className="text-lg font-semibold mb-1">{t.settings?.language || 'Язык'}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.languageDesc || 'Выберите язык интерфейса'}</p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {locales.map((loc) => (
                   <button
                     key={loc}
                     onClick={() => setLocale(loc)}
-                    className={`flex items-center justify-between p-4 rounded-lg border-2 transition-colors ${
-                      locale === loc
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
+                    className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
+                      locale === loc ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <span className={locale === loc ? 'font-medium text-blue-700' : 'text-gray-700'}>
-                      {localeNames[loc]}
-                    </span>
-                    {locale === loc && (
-                      <Check className="h-5 w-5 text-blue-600" />
-                    )}
+                    <span className={locale === loc ? 'font-medium text-blue-700' : 'text-gray-700'}>{localeNames[loc]}</span>
+                    {locale === loc && <Check className="h-5 w-5 text-blue-600" />}
                   </button>
                 ))}
               </div>
             </Card>
           )}
 
-          {/* Notifications Tab */}
+          {/* ── Notifications ── */}
           {activeTab === 'notifications' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">{t.settings.notifications}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings.notificationsDesc}</p>
+              <h2 className="text-lg font-semibold mb-1">{t.settings?.notifications || 'Уведомления'}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.notificationsDesc || 'Настройте email-уведомления'}</p>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 <NotificationToggle
-                  label={t.settings.emailPaymentReminders}
-                  description={t.settings.emailPaymentRemindersDesc}
+                  label={t.settings?.emailPaymentReminders || 'Напоминания о платежах'}
+                  description={t.settings?.emailPaymentRemindersDesc || 'Уведомления о предстоящих платежах'}
                   defaultChecked={true}
                 />
                 <NotificationToggle
-                  label={t.settings.emailContractExpiry}
-                  description={t.settings.emailContractExpiryDesc}
+                  label={t.settings?.emailContractExpiry || 'Окончание договора'}
+                  description={t.settings?.emailContractExpiryDesc || 'Уведомление за 30 дней до окончания'}
                   defaultChecked={true}
                 />
-                <NotificationToggle
-                  label={t.settings.emailNewTenant}
-                  description={t.settings.emailNewTenantDesc}
-                  defaultChecked={false}
-                />
+                {userData?.isOwner && (
+                  <NotificationToggle
+                    label={t.settings?.emailNewTenant || 'Новый арендатор'}
+                    description={t.settings?.emailNewTenantDesc || 'Уведомление при регистрации'}
+                    defaultChecked={false}
+                  />
+                )}
               </div>
             </Card>
           )}
 
-          {/* Security Tab */}
+          {/* ── Security ── */}
           {activeTab === 'security' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">{t.settings.security}</h2>
-              <p className="text-sm text-gray-500 mb-6">{t.settings.securityDesc}</p>
+              <h2 className="text-lg font-semibold mb-1">{t.settings?.security || 'Безопасность'}</h2>
+              <p className="text-sm text-gray-500 mb-6">{t.settings?.securityDesc || 'Пароль и безопасность аккаунта'}</p>
 
-              <div className="space-y-4">
-                <Button variant="outline">{t.settings.changePassword}</Button>
-                
+              <div className="space-y-5">
+                <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl">
+                  <div className="p-2 bg-white rounded-lg shadow-sm">
+                    <KeyRound className="h-5 w-5 text-gray-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium text-gray-900">Пароль</p>
+                    <p className="text-sm text-gray-500">Последнее изменение неизвестно</p>
+                  </div>
+                  <Button variant="outline" size="sm">{t.settings?.changePassword || 'Изменить'}</Button>
+                </div>
+
                 <div className="pt-4 border-t">
-                  <h3 className="font-medium text-red-600 mb-2">{t.settings.dangerZone}</h3>
-                  <p className="text-sm text-gray-500 mb-3">{t.settings.deleteAccountDesc}</p>
-                  <Button variant="destructive" size="sm">{t.settings.deleteAccount}</Button>
+                  <h3 className="font-medium text-red-600 mb-2">{t.settings?.dangerZone || 'Опасная зона'}</h3>
+                  <p className="text-sm text-gray-500 mb-3">{t.settings?.deleteAccountDesc || 'Удаление аккаунта необратимо'}</p>
+                  <Button variant="destructive" size="sm">{t.settings?.deleteAccount || 'Удалить аккаунт'}</Button>
                 </div>
               </div>
             </Card>
@@ -694,40 +721,24 @@ function SettingsContent() {
   )
 }
 
-function NotificationToggle({ 
-  label, 
-  description, 
-  defaultChecked 
-}: { 
-  label: string
-  description: string
-  defaultChecked: boolean 
-}) {
+function NotificationToggle({ label, description, defaultChecked }: { label: string; description: string; defaultChecked: boolean }) {
   const [checked, setChecked] = useState(defaultChecked)
-  
   return (
-    <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-lg">
+    <div className="flex items-start justify-between gap-4 p-4 bg-gray-50 rounded-xl">
       <div>
         <p className="font-medium text-gray-900">{label}</p>
         <p className="text-sm text-gray-500">{description}</p>
       </div>
       <button
         onClick={() => setChecked(!checked)}
-        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${
-          checked ? 'bg-blue-600' : 'bg-gray-300'
-        }`}
+        className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-blue-600' : 'bg-gray-300'}`}
       >
-        <span
-          className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-            checked ? 'translate-x-5' : ''
-          }`}
-        />
+        <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${checked ? 'translate-x-5' : ''}`} />
       </button>
     </div>
   )
 }
 
-// Обёртка с Suspense
 export default function SettingsPage() {
   return (
     <Suspense fallback={

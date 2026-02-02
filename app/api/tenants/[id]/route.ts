@@ -1,122 +1,108 @@
 // app/api/tenants/[id]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
-import { requireUser } from '@/lib/auth'
+import { NextRequest, NextResponse } from 'next/server'
 
-// GET /api/tenants/[id]
+// GET — получить информацию об арендаторе
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await requireUser()
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { id } = await params
 
     const tenant = await prisma.tenant.findFirst({
-      where: { id, userId: user.id },
+      where: {
+        id,
+        userId: user.id, // Только арендаторы текущего владельца
+      },
       include: {
-        property: true,
-        payments: {
-          orderBy: { dueDate: 'desc' },
-          take: 10
+        property: {
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            city: true,
+          }
         },
-        contracts: true,
-      }
+        contracts: {
+          select: {
+            id: true,
+            type: true,
+            startDate: true,
+            endDate: true,
+            rentAmount: true,
+            status: true,
+          },
+          orderBy: { startDate: 'desc' },
+        },
+        payments: {
+          select: {
+            id: true,
+            amount: true,
+            type: true,
+            status: true,
+            dueDate: true,
+            paidDate: true,
+            period: true,
+          },
+          orderBy: { dueDate: 'desc' },
+          take: 20,
+        },
+      },
     })
 
     if (!tenant) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      )
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
     }
 
     return NextResponse.json(tenant)
   } catch (error) {
     console.error('Error fetching tenant:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch tenant' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// PUT /api/tenants/[id]
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const user = await requireUser()
-    const { id } = await params
-    const body = await request.json()
-
-    const existing = await prisma.tenant.findFirst({
-      where: { id, userId: user.id }
-    })
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      )
-    }
-
-    const tenant = await prisma.tenant.update({
-      where: { id },
-      data: {
-        propertyId: body.propertyId || null,
-        firstName: body.firstName,
-        lastName: body.lastName,
-        email: body.email || null,
-        phone: body.phone || null,
-        pesel: body.pesel || null,
-        moveInDate: body.moveInDate ? new Date(body.moveInDate) : null,
-        moveOutDate: body.moveOutDate ? new Date(body.moveOutDate) : null,
-        isActive: body.isActive ?? true,
-      }
-    })
-
-    return NextResponse.json(tenant)
-  } catch (error) {
-    console.error('Error updating tenant:', error)
-    return NextResponse.json(
-      { error: 'Failed to update tenant' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE /api/tenants/[id]
+// DELETE — удалить арендатора
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await requireUser()
-    const { id } = await params
+    const supabase = await createClient()
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-    const existing = await prisma.tenant.findFirst({
-      where: { id, userId: user.id }
-    })
-
-    if (!existing) {
-      return NextResponse.json(
-        { error: 'Tenant not found' },
-        { status: 404 }
-      )
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    await prisma.tenant.delete({
-      where: { id }
+    const { id } = await params
+
+    // Проверяем что арендатор принадлежит текущему владельцу
+    const tenant = await prisma.tenant.findFirst({
+      where: { id, userId: user.id },
+    })
+
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
+    }
+
+    // Деактивируем вместо удаления (soft delete)
+    await prisma.tenant.update({
+      where: { id },
+      data: { isActive: false, moveOutDate: new Date() },
     })
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Error deleting tenant:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete tenant' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
