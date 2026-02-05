@@ -1,12 +1,11 @@
 // components/chat/message-input.tsx
 'use client'
 
-import { useState, useRef, useEffect, KeyboardEvent } from 'react'
-import { Send, Loader2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useState, useRef, useEffect } from 'react'
+import { Send } from 'lucide-react'
 
 interface MessageInputProps {
-  onSend: (content: string) => Promise<void>
+  onSend: (content: string) => Promise<void> | void
   disabled?: boolean
   placeholder?: string
 }
@@ -14,82 +13,68 @@ interface MessageInputProps {
 export function MessageInput({
   onSend,
   disabled = false,
-  placeholder = 'Напишите сообщение...',
+  placeholder = 'Введите сообщение...',
 }: MessageInputProps) {
-  const [content, setContent] = useState('')
-  const [sending, setSending] = useState(false)
+  const [message, setMessage] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  // Автоматически увеличиваем высоту textarea
+  // Автоматический resize textarea
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
+    const textarea = textareaRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`
     }
-  }, [content])
+  }, [message])
 
-  const handleSend = async () => {
-    const trimmedContent = content.trim()
-    if (!trimmedContent || sending || disabled) return
+  const handleSubmit = () => {
+    const trimmed = message.trim()
+    if (!trimmed || disabled) return
 
-    setSending(true)
-    try {
-      await onSend(trimmedContent)
-      setContent('')
-      // Сбрасываем высоту
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto'
-      }
-    } catch (error) {
-      console.error('Error sending message:', error)
-    } finally {
-      setSending(false)
-    }
+    // Сразу очищаем поле
+    setMessage('')
+    
+    // Отправляем в фоне (fire and forget)
+    Promise.resolve(onSend(trimmed)).catch((err) => {
+      console.error('Failed to send message:', err)
+    })
   }
 
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Enter без Shift отправляет сообщение
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      handleSubmit()
     }
   }
 
   return (
-    <div className="border-t bg-white p-3 sm:p-4">
-      <div className="flex items-end gap-2 max-w-4xl mx-auto">
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            disabled={disabled || sending}
-            rows={1}
-            className="w-full resize-none rounded-2xl border border-gray-300 px-4 py-3 pr-12
-                       text-sm placeholder:text-gray-400
-                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
-                       disabled:bg-gray-50 disabled:cursor-not-allowed
-                       max-h-32"
-          />
-        </div>
-        
-        <Button
-          onClick={handleSend}
-          disabled={!content.trim() || sending || disabled}
-          size="icon"
-          className="h-11 w-11 rounded-full shrink-0"
+    <div className="border-t bg-white p-3">
+      <div className="flex items-end gap-2">
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          rows={1}
+          className="flex-1 resize-none rounded-full border border-gray-300 px-4 py-2.5 text-sm 
+                     focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500
+                     disabled:bg-gray-50 disabled:text-gray-500
+                     max-h-[120px] overflow-y-auto"
+        />
+        <button
+          onClick={handleSubmit}
+          disabled={!message.trim() || disabled}
+          className="shrink-0 w-10 h-10 rounded-full bg-blue-600 text-white 
+                     flex items-center justify-center
+                     hover:bg-blue-700 transition-colors
+                     disabled:bg-blue-300 disabled:cursor-not-allowed"
         >
-          {sending ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <Send className="h-5 w-5" />
-          )}
-        </Button>
+          <Send className="h-5 w-5" />
+        </button>
       </div>
-      
-      <p className="text-[10px] text-gray-400 text-center mt-2 hidden sm:block">
+      <p className="text-xs text-gray-400 text-center mt-2">
         Enter — отправить, Shift+Enter — новая строка
       </p>
     </div>

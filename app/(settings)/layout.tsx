@@ -11,6 +11,7 @@ import {
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
+import { UnreadBadge } from '@/components/chat'
 
 interface UserInfo {
   isOwner: boolean
@@ -77,6 +78,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { href: '/tenants', icon: Users, label: t.nav?.tenants || 'Арендаторы' },
     { href: '/payments', icon: CreditCard, label: t.nav?.payments || 'Платежи' },
     { href: '/contracts', icon: FileText, label: t.nav?.contracts || 'Договоры' },
+    { href: '/messages', icon: MessageSquare, label: t.nav?.messages || 'Сообщения' },
   ]
 
   const tenantNavItems = [
@@ -117,7 +119,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
             }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/messages' && <UnreadBadge />}
           </Link>
         )
       })}
@@ -135,7 +138,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
             }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/tenant/messages' && <UnreadBadge />}
           </Link>
         )
       })}
@@ -157,7 +161,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
             }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/messages' && <UnreadBadge />}
           </Link>
         )
       })}
@@ -177,7 +182,8 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
               active ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700 hover:bg-gray-100'
             }`}>
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/tenant/messages' && <UnreadBadge />}
           </Link>
         )
       })}

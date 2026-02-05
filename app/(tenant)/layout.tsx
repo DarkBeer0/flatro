@@ -11,6 +11,7 @@ import {
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
+import { UnreadBadge } from '@/components/chat'
 
 interface UserInfo {
   isOwner: boolean
@@ -114,7 +115,8 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             }`}
           >
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/tenant/messages' && <UnreadBadge />}
           </Link>
         )
       })}
@@ -154,7 +156,8 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             }`}
           >
             <Icon className={`h-5 w-5 ${active ? 'text-blue-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/messages' && <UnreadBadge />}
           </Link>
         )
       })}
@@ -178,7 +181,8 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
             }`}
           >
             <Icon className={`h-5 w-5 ${active ? 'text-green-600' : ''}`} />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/tenant/messages' && <UnreadBadge />}
           </Link>
         )
       })}
