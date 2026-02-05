@@ -70,6 +70,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     { href: '/tenants', icon: Users, label: t.nav?.tenants || 'Арендаторы' },
     { href: '/payments', icon: CreditCard, label: t.nav?.payments || 'Платежи' },
     { href: '/contracts', icon: FileText, label: t.nav?.contracts || 'Договоры' },
+    { href: '/messages', icon: MessageSquare, label: t.nav?.messages || 'Сообщения' },
   ]
 
   const tenantNavItems = [

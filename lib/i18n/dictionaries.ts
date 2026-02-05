@@ -22,6 +22,7 @@ export interface Dictionary {
     payments: string
     contracts: string
     settings: string
+    messages: string
   }
   common: {
     add: string
@@ -202,6 +203,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       payments: 'Платежи',
       contracts: 'Договоры',
       settings: 'Настройки',
+      messages: 'Сообщения',
     },
     common: {
       add: 'Добавить',
@@ -374,6 +376,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
       payments: 'Płatności',
       contracts: 'Umowy',
       settings: 'Ustawienia',
+      messages: 'Wiadomości',
     },
     common: {
       add: 'Dodaj',
@@ -540,7 +543,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
   },
   // ENGLISH
   en: {
-    nav: { dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants', payments: 'Payments', contracts: 'Contracts', settings: 'Settings' },
+    nav: { dashboard: 'Dashboard', properties: 'Properties', tenants: 'Tenants', payments: 'Payments', contracts: 'Contracts', settings: 'Settings', messages: 'Messages' },
     common: { add: 'Add', edit: 'Edit', delete: 'Delete', save: 'Save', cancel: 'Cancel', back: 'Back', search: 'Search', filter: 'Filter', all: 'All', details: 'Details', actions: 'Actions', loading: 'Loading...', noData: 'No data', yes: 'Yes', no: 'No', currency: 'PLN', perMonth: '/ month' },
     dashboard: { title: 'Dashboard', welcome: 'Welcome to Flatro! Manage your properties.', properties: 'Properties', occupied: 'occupied', vacant: 'vacant', tenants: 'Tenants', activeTenants: 'Active tenants', pendingPayments: 'Pending payments', overdue: 'overdue', monthlyIncome: 'Monthly income', currentMonth: 'Current month', quickActions: 'Quick actions', addProperty: 'Add property', addPropertyDesc: 'Add a new apartment or house', addTenant: 'Add tenant', addTenantDesc: 'Register a new tenant', addPayment: 'Add payment', addPaymentDesc: 'Register a received payment', recentActivity: 'Recent activity', noActivity: 'No activity', noActivityDesc: 'Add your first property to get started' },
     properties: { title: 'Properties', subtitle: 'Manage your properties', addNew: 'Add property', total: 'Total', vacantCount: 'Vacant', rentedCount: 'Rented', noProperties: 'No properties', noPropertiesDesc: 'Add your first property to start managing', area: 'Area', rooms: 'Rooms', floor: 'Floor', rent: 'Rent', noTenant: 'No tenant', status: { vacant: 'Vacant', occupied: 'Occupied', reserved: 'Reserved' } },
@@ -579,7 +582,7 @@ export const dictionaries: Record<Locale, Dictionary> = {
 
   // GERMAN
   de: {
-    nav: { dashboard: 'Dashboard', properties: 'Immobilien', tenants: 'Mieter', payments: 'Zahlungen', contracts: 'Verträge', settings: 'Einstellungen' },
+    nav: { dashboard: 'Dashboard', properties: 'Immobilien', tenants: 'Mieter', payments: 'Zahlungen', contracts: 'Verträge', settings: 'Einstellungen', messages: 'Nachrichten' },
     common: { add: 'Hinzufügen', edit: 'Bearbeiten', delete: 'Löschen', save: 'Speichern', cancel: 'Abbrechen', back: 'Zurück', search: 'Suchen', filter: 'Filtern', all: 'Alle', details: 'Details', actions: 'Aktionen', loading: 'Laden...', noData: 'Keine Daten', yes: 'Ja', no: 'Nein', currency: 'PLN', perMonth: '/ Monat' },
     dashboard: { title: 'Dashboard', welcome: 'Willkommen bei Flatro! Verwalten Sie Ihre Immobilien.', properties: 'Immobilien', occupied: 'belegt', vacant: 'frei', tenants: 'Mieter', activeTenants: 'Aktive Mieter', pendingPayments: 'Ausstehende Zahlungen', overdue: 'überfällig', monthlyIncome: 'Monatliches Einkommen', currentMonth: 'Aktueller Monat', quickActions: 'Schnellaktionen', addProperty: 'Immobilie hinzufügen', addPropertyDesc: 'Neue Wohnung oder Haus hinzufügen', addTenant: 'Mieter hinzufügen', addTenantDesc: 'Neuen Mieter registrieren', addPayment: 'Zahlung hinzufügen', addPaymentDesc: 'Erhaltene Zahlung registrieren', recentActivity: 'Letzte Aktivitäten', noActivity: 'Keine Aktivität', noActivityDesc: 'Fügen Sie Ihre erste Immobilie hinzu' },
     properties: { title: 'Immobilien', subtitle: 'Verwalten Sie Ihre Immobilien', addNew: 'Immobilie hinzufügen', total: 'Gesamt', vacantCount: 'Frei', rentedCount: 'Vermietet', noProperties: 'Keine Immobilien', noPropertiesDesc: 'Fügen Sie Ihre erste Immobilie hinzu', area: 'Fläche', rooms: 'Zimmer', floor: 'Etage', rent: 'Miete', noTenant: 'Kein Mieter', status: { vacant: 'Frei', occupied: 'Belegt', reserved: 'Reserviert' } },
@@ -616,7 +619,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
 
   // UKRAINIAN
   uk: {
-    nav: { dashboard: 'Головна', properties: 'Нерухомість', tenants: 'Орендарі', payments: 'Платежі', contracts: 'Договори', settings: 'Налаштування' },
+    nav: { dashboard: 'Головна', properties: 'Нерухомість', tenants: 'Орендарі', payments: 'Платежі',
+       contracts: 'Договори', settings: 'Налаштування', messages: 'Повідомлення' },
     common: { add: 'Додати', edit: 'Редагувати', delete: 'Видалити', save: 'Зберегти', cancel: 'Скасувати', back: 'Назад', search: 'Пошук', filter: 'Фільтр', all: 'Всі', details: 'Деталі', actions: 'Дії', loading: 'Завантаження...', noData: 'Немає даних', yes: 'Так', no: 'Ні', currency: 'zł', perMonth: '/ місяць' },
     dashboard: { title: 'Головна', welcome: 'Ласкаво просимо до Flatro! Керуйте своєю нерухомістю.', properties: 'Нерухомість', occupied: 'зайнято', vacant: 'вільно', tenants: 'Орендарі', activeTenants: 'Активних орендарів', pendingPayments: 'Очікувані платежі', overdue: 'прострочених', monthlyIncome: 'Місячний дохід', currentMonth: 'Поточний місяць', quickActions: 'Швидкі дії', addProperty: 'Додати нерухомість', addPropertyDesc: 'Додати нову квартиру або будинок', addTenant: 'Додати орендаря', addTenantDesc: 'Зареєструвати нового орендаря', addPayment: 'Додати платіж', addPaymentDesc: 'Зареєструвати отриманий платіж', recentActivity: 'Останні дії', noActivity: 'Немає активності', noActivityDesc: 'Додайте першу нерухомість, щоб почати' },
     properties: { title: 'Нерухомість', subtitle: 'Керування вашою нерухомістю', addNew: 'Додати нерухомість', total: 'Всього', vacantCount: 'Вільних', rentedCount: 'Зданих', noProperties: 'Немає нерухомості', noPropertiesDesc: 'Додайте першу нерухомість для початку керування', area: 'Площа', rooms: 'Кімнати', floor: 'Поверх', rent: 'Оренда', noTenant: 'Немає орендаря', status: { vacant: 'Вільно', occupied: 'Здано', reserved: 'Заброньовано' } },
@@ -653,7 +657,8 @@ export const dictionaries: Record<Locale, Dictionary> = {
 
   // CZECH
   cs: {
-    nav: { dashboard: 'Přehled', properties: 'Nemovitosti', tenants: 'Nájemníci', payments: 'Platby', contracts: 'Smlouvy', settings: 'Nastavení' },
+    nav: { dashboard: 'Přehled', properties: 'Nemovitosti', tenants: 'Nájemníci',
+       payments: 'Platby', contracts: 'Smlouvy', settings: 'Nastavení', messages: 'Zprávy' },
     common: { add: 'Přidat', edit: 'Upravit', delete: 'Smazat', save: 'Uložit', cancel: 'Zrušit', back: 'Zpět', search: 'Hledat', filter: 'Filtr', all: 'Vše', details: 'Detaily', actions: 'Akce', loading: 'Načítání...', noData: 'Žádná data', yes: 'Ano', no: 'Ne', currency: 'PLN', perMonth: '/ měsíc' },
     dashboard: { title: 'Přehled', welcome: 'Vítejte ve Flatro! Spravujte své nemovitosti.', properties: 'Nemovitosti', occupied: 'obsazeno', vacant: 'volné', tenants: 'Nájemníci', activeTenants: 'Aktivních nájemníků', pendingPayments: 'Čekající platby', overdue: 'po splatnosti', monthlyIncome: 'Měsíční příjem', currentMonth: 'Aktuální měsíc', quickActions: 'Rychlé akce', addProperty: 'Přidat nemovitost', addPropertyDesc: 'Přidat nový byt nebo dům', addTenant: 'Přidat nájemníka', addTenantDesc: 'Zaregistrovat nového nájemníka', addPayment: 'Přidat platbu', addPaymentDesc: 'Zaregistrovat přijatou platbu', recentActivity: 'Poslední aktivita', noActivity: 'Žádná aktivita', noActivityDesc: 'Přidejte první nemovitost pro začátek' },
     properties: { title: 'Nemovitosti', subtitle: 'Správa vašich nemovitostí', addNew: 'Přidat nemovitost', total: 'Celkem', vacantCount: 'Volných', rentedCount: 'Pronajatých', noProperties: 'Žádné nemovitosti', noPropertiesDesc: 'Přidejte první nemovitost pro začátek správy', area: 'Plocha', rooms: 'Pokoje', floor: 'Patro', rent: 'Nájem', noTenant: 'Žádný nájemník', status: { vacant: 'Volné', occupied: 'Obsazeno', reserved: 'Rezervováno' } },

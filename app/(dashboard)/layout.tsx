@@ -65,12 +65,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // === ЕДИНЫЙ ПОРЯДОК: Владелец → Арендатор (всегда) ===
   const ownerNavItems = [
-    { href: '/dashboard', icon: Gauge, label: t.nav.dashboard },
-    { href: '/properties', icon: Home, label: t.nav.properties },
-    { href: '/tenants', icon: Users, label: t.nav.tenants },
-    { href: '/payments', icon: CreditCard, label: t.nav.payments },
-    { href: '/contracts', icon: FileText, label: t.nav.contracts },
-  ]
+  { href: '/dashboard', icon: Gauge, label: t.nav.dashboard },
+  { href: '/properties', icon: Home, label: t.nav.properties },
+  { href: '/tenants', icon: Users, label: t.nav.tenants },
+  { href: '/payments', icon: CreditCard, label: t.nav.payments },
+  { href: '/contracts', icon: FileText, label: t.nav.contracts },
+  { href: '/messages', icon: MessageSquare, label: t.nav.messages || 'Сообщения' },
+] 
 
   const tenantNavItems = [
     { href: '/tenant/dashboard', icon: Home, label: 'Моё жильё' },
