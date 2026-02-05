@@ -19,6 +19,7 @@ interface Message {
     id: string
     name: string | null
   }
+  optimistic?: boolean
 }
 
 interface ChatPartner {
@@ -143,47 +144,49 @@ export function ChatWindow({
 
   // Отправка сообщения
   const handleSend = async (content: string) => {
-  if (!content.trim()) return
+    if (!content.trim() || !currentUserId) return
 
-  const tempId = `temp-${Date.now()}`
+    const tempId = `temp-${Date.now()}`
 
-  const tempMessage: ChatMessage = {
-    id: tempId,
-    senderId: currentUserId!,
-    receiverId: "temp",
-    content,
-    isRead: false,
-    readAt: null,
-    createdAt: new Date(),
-    optimistic: true,
+    const tempMessage: Message = {
+      id: tempId,
+      senderId: currentUserId,
+      receiverId: chatPartner?.id || "",
+      content,
+      isRead: false,
+      readAt: null,
+      createdAt: new Date().toISOString(),
+      sender: { 
+        id: currentUserId, 
+        name: null
+      }
+    }
+    setMessages(prev => [...prev, tempMessage])
+    scrollToBottom(true)
+
+    try {
+      const res = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ propertyId, content }),
+      })
+
+      if (!res.ok) {
+        throw new Error("Failed to send message")
+      }
+
+      const realMessage: Message = await res.json()
+
+      setMessages(prev =>
+        prev.map(m => (m.id === tempId ? realMessage : m))
+      )
+    } catch (err) {
+      console.error("Error sending message:", err)
+      
+      setMessages(prev => prev.filter(m => m.id !== tempId))
+      alert("Не удалось отправить сообщение. Попробуйте еще раз.")
+    }
   }
-
-  // 1) optimistic UI
-  setMessages(prev => [...prev, tempMessage])
-  scrollToBottom(true)
-
-  try {
-    // 2) send to server
-    const res = await fetch("/api/messages", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ propertyId, content }),
-    })
-
-    if (!res.ok) throw new Error("Send failed")
-
-    const realMessage: ChatMessage = await res.json()
-
-    // 3) replace temp with real
-    setMessages(prev =>
-      prev.map(m => (m.id === tempId ? realMessage : m))
-    )
-  } catch (err) {
-    // 4) rollback
-    setMessages(prev => prev.filter(m => m.id !== tempId))
-    alert("Ошибка отправки 😢")
-  }
-}
 
 
   // Группировка сообщений по датам
