@@ -143,22 +143,48 @@ export function ChatWindow({
 
   // Отправка сообщения
   const handleSend = async (content: string) => {
-    const res = await fetch('/api/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+  if (!content.trim()) return
+
+  const tempId = `temp-${Date.now()}`
+
+  const tempMessage: ChatMessage = {
+    id: tempId,
+    senderId: currentUserId!,
+    receiverId: "temp",
+    content,
+    isRead: false,
+    readAt: null,
+    createdAt: new Date(),
+    optimistic: true,
+  }
+
+  // 1) optimistic UI
+  setMessages(prev => [...prev, tempMessage])
+  scrollToBottom(true)
+
+  try {
+    // 2) send to server
+    const res = await fetch("/api/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ propertyId, content }),
     })
 
-    if (!res.ok) {
-      const data = await res.json()
-      throw new Error(data.error || 'Failed to send message')
-    }
+    if (!res.ok) throw new Error("Send failed")
 
-    const newMessage = await res.json()
-    setMessages(prev => [...prev, newMessage])
-    shouldScrollToBottom.current = true
-    scrollToBottom(true)
+    const realMessage: ChatMessage = await res.json()
+
+    // 3) replace temp with real
+    setMessages(prev =>
+      prev.map(m => (m.id === tempId ? realMessage : m))
+    )
+  } catch (err) {
+    // 4) rollback
+    setMessages(prev => prev.filter(m => m.id !== tempId))
+    alert("Ошибка отправки 😢")
   }
+}
+
 
   // Группировка сообщений по датам
   const groupMessagesByDate = (messages: Message[]) => {

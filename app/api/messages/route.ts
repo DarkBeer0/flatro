@@ -133,52 +133,103 @@ export async function GET() {
       })
     }
 
-    // Для арендатора: один чат с владельцем
-    // tenantProfile — это объект (связь один-к-одному), не массив
-    if (dbUser.isTenant && dbUser.tenantProfile?.isActive && dbUser.tenantProfile?.property) {
-      const property = dbUser.tenantProfile.property
-
-      const lastMessage = await prisma.message.findFirst({
-        where: { propertyId: property.id },
-        orderBy: { createdAt: 'desc' },
+    // Для арендатора: может быть несколько квартир
+    // Ищем все активные Tenant записи для этого пользователя
+    if (dbUser.isTenant) {
+      const tenantRecords = await prisma.tenant.findMany({
+        where: {
+          tenantUserId: authUser.id,
+          isActive: true,
+          propertyId: { not: null },
+        },
         select: {
           id: true,
-          content: true,
-          createdAt: true,
-          senderId: true,
-          isRead: true,
+          property: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                }
+              }
+            }
+          }
         }
       })
 
-      const unreadCount = await prisma.message.count({
-        where: {
-          propertyId: property.id,
-          receiverId: authUser.id,
-          isRead: false,
-        }
+      if (tenantRecords.length === 0) {
+        return NextResponse.json({
+          role: 'tenant',
+          chats: [],
+        })
+      }
+
+      // Для каждой квартиры получаем последнее сообщение и непрочитанные
+      const chats = await Promise.all(
+        tenantRecords
+          .filter(t => t.property)
+          .map(async (tenant) => {
+            const property = tenant.property!
+
+            const lastMessage = await prisma.message.findFirst({
+              where: { propertyId: property.id },
+              orderBy: { createdAt: 'desc' },
+              select: {
+                id: true,
+                content: true,
+                createdAt: true,
+                senderId: true,
+                isRead: true,
+              }
+            })
+
+            const unreadCount = await prisma.message.count({
+              where: {
+                propertyId: property.id,
+                receiverId: authUser.id,
+                isRead: false,
+              }
+            })
+
+            return {
+              propertyId: property.id,
+              propertyName: property.name,
+              propertyAddress: property.address,
+              owner: {
+                id: property.user.id,
+                name: property.user.name,
+                email: property.user.email,
+              },
+              lastMessage: lastMessage ? {
+                content: lastMessage.content.length > 50 
+                  ? lastMessage.content.substring(0, 50) + '...' 
+                  : lastMessage.content,
+                createdAt: lastMessage.createdAt,
+                isFromMe: lastMessage.senderId === authUser.id,
+                isRead: lastMessage.isRead,
+              } : null,
+              unreadCount,
+            }
+          })
+      )
+
+      // Сортируем: непрочитанные сверху, потом по дате
+      const sortedChats = chats.sort((a, b) => {
+        if (a.unreadCount > 0 && b.unreadCount === 0) return -1
+        if (a.unreadCount === 0 && b.unreadCount > 0) return 1
+        
+        const aDate = a.lastMessage?.createdAt || new Date(0)
+        const bDate = b.lastMessage?.createdAt || new Date(0)
+        return new Date(bDate).getTime() - new Date(aDate).getTime()
       })
 
       return NextResponse.json({
         role: 'tenant',
-        chat: {
-          propertyId: property.id,
-          propertyName: property.name,
-          propertyAddress: property.address,
-          owner: {
-            id: property.user.id,
-            name: property.user.name,
-            email: property.user.email,
-          },
-          lastMessage: lastMessage ? {
-            content: lastMessage.content.length > 50 
-              ? lastMessage.content.substring(0, 50) + '...' 
-              : lastMessage.content,
-            createdAt: lastMessage.createdAt,
-            isFromMe: lastMessage.senderId === authUser.id,
-            isRead: lastMessage.isRead,
-          } : null,
-          unreadCount,
-        }
+        chats: sortedChats,
       })
     }
 
@@ -216,20 +267,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Получаем информацию о пользователе и квартире
-    const [dbUser, property] = await Promise.all([
+    const [dbUser, property, tenantRecord] = await Promise.all([
       prisma.user.findUnique({
         where: { id: authUser.id },
         select: {
           id: true,
           isOwner: true,
           isTenant: true,
-          tenantProfile: {
-            select: { 
-              id: true,
-              propertyId: true,
-              isActive: true,
-            }
-          }
         }
       }),
       prisma.property.findUnique({
@@ -244,6 +288,15 @@ export async function POST(request: NextRequest) {
             }
           }
         }
+      }),
+      // Проверяем является ли пользователь арендатором этой квартиры
+      prisma.tenant.findFirst({
+        where: {
+          tenantUserId: authUser.id,
+          propertyId: propertyId,
+          isActive: true,
+        },
+        select: { id: true }
       })
     ])
 
@@ -259,8 +312,7 @@ export async function POST(request: NextRequest) {
     let receiverId: string
 
     // Проверяем, является ли пользователь арендатором этой квартиры
-    const isTenantOfThisProperty = dbUser.tenantProfile?.isActive && 
-                                    dbUser.tenantProfile?.propertyId === propertyId
+    const isTenantOfThisProperty = !!tenantRecord
 
     if (property.userId === authUser.id) {
       // Владелец пишет арендатору

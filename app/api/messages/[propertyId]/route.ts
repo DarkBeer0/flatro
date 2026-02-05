@@ -22,7 +22,7 @@ export async function GET(
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
 
     // Проверяем доступ к чату
-    const [property, dbUser] = await Promise.all([
+    const [property, dbUser, tenantRecord] = await Promise.all([
       prisma.property.findUnique({
         where: { id: propertyId },
         select: {
@@ -55,14 +55,16 @@ export async function GET(
           name: true,
           isOwner: true,
           isTenant: true,
-          tenantProfile: {
-            select: { 
-              id: true,
-              propertyId: true,
-              isActive: true,
-            }
-          }
         }
+      }),
+      // Проверяем является ли пользователь арендатором этой квартиры
+      prisma.tenant.findFirst({
+        where: {
+          tenantUserId: authUser.id,
+          propertyId: propertyId,
+          isActive: true,
+        },
+        select: { id: true }
       })
     ])
 
@@ -76,8 +78,7 @@ export async function GET(
 
     // Проверяем права доступа
     const isOwner = property.userId === authUser.id
-    const isTenantOfProperty = dbUser.tenantProfile?.isActive && 
-                                dbUser.tenantProfile?.propertyId === propertyId
+    const isTenantOfProperty = !!tenantRecord
 
     if (!isOwner && !isTenantOfProperty) {
       return NextResponse.json(
@@ -172,33 +173,28 @@ export async function PATCH(
     const { propertyId } = await params
 
     // Проверяем доступ к чату
-    const [property, dbUser] = await Promise.all([
+    const [property, tenantRecord] = await Promise.all([
       prisma.property.findUnique({
         where: { id: propertyId },
         select: { id: true, userId: true }
       }),
-      prisma.user.findUnique({
-        where: { id: authUser.id },
-        select: {
-          id: true,
-          tenantProfile: {
-            select: { 
-              id: true,
-              propertyId: true,
-              isActive: true,
-            }
-          }
-        }
+      // Проверяем является ли пользователь арендатором этой квартиры
+      prisma.tenant.findFirst({
+        where: {
+          tenantUserId: authUser.id,
+          propertyId: propertyId,
+          isActive: true,
+        },
+        select: { id: true }
       })
     ])
 
-    if (!property || !dbUser) {
+    if (!property) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 })
     }
 
     const isOwner = property.userId === authUser.id
-    const isTenantOfProperty = dbUser.tenantProfile?.isActive && 
-                                dbUser.tenantProfile?.propertyId === propertyId
+    const isTenantOfProperty = !!tenantRecord
 
     if (!isOwner && !isTenantOfProperty) {
       return NextResponse.json(
