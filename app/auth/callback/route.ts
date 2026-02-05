@@ -16,9 +16,10 @@ function authLog(event: string, data: Record<string, unknown> = {}) {
     event,
     ...data,
     // Mask PII
-    ...(data.email && typeof data.email === 'string' && { 
-      email: data.email.replace(/(.{2}).*@/, '$1***@') 
-    }),
+    ...(typeof data.email === 'string'
+  ? { email: data.email.replace(/(.{2}).*@/, '$1***@') }
+  : {}),
+
   }
   console.log(JSON.stringify(logData))
 }
