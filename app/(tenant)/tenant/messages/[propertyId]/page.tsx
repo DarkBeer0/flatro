@@ -26,7 +26,6 @@ export default function TenantChatPage({ params }: PageProps) {
           propertyId={propertyId}
           backLink="/tenant/messages"
           backLabel="Все чаты"
-          pollingInterval={5000}
         />
       </div>
     </div>

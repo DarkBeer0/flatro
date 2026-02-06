@@ -5,6 +5,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, MessageSquare, ArrowLeft, User } from 'lucide-react'
 import { MessageBubble, DateSeparator } from './message-bubble'
 import { MessageInput } from './message-input'
+import { useRealtimeMessages } from './use-realtime-messages'
+import { notifyMessagesRead } from './unread-badge'
 import Link from 'next/link'
 
 interface Message {
@@ -19,7 +21,18 @@ interface Message {
     id: string
     name: string | null
   }
-  optimistic?: boolean
+}
+
+// Тип сообщения из Realtime (без sender)
+interface RealtimeMessage {
+  id: string
+  senderId: string
+  receiverId: string
+  propertyId: string
+  content: string
+  isRead: boolean
+  readAt: string | null
+  createdAt: string
 }
 
 interface ChatPartner {
@@ -38,14 +51,12 @@ interface ChatWindowProps {
   propertyId: string
   backLink?: string
   backLabel?: string
-  pollingInterval?: number // мс, по умолчанию 5000
 }
 
 export function ChatWindow({
   propertyId,
   backLink,
   backLabel = 'Назад',
-  pollingInterval = 5000,
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [property, setProperty] = useState<Property | null>(null)
@@ -57,16 +68,69 @@ export function ChatWindow({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const shouldScrollToBottom = useRef(true)
+  const pendingTempIds = useRef<Set<string>>(new Set())
 
-  // Прокрутка к последнему сообщению
   const scrollToBottom = useCallback((force = false) => {
     if (force || shouldScrollToBottom.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [])
 
-  // Загрузка сообщений
-  const fetchMessages = useCallback(async (initial = false) => {
+  // Обработчик нового сообщения из Realtime
+  const handleRealtimeNewMessage = useCallback((newMessage: RealtimeMessage) => {
+    setMessages(prev => {
+      // Проверяем нет ли уже такого сообщения
+      if (prev.some(m => m.id === newMessage.id)) {
+        return prev
+      }
+      
+      // Проверяем нет ли temp сообщения с таким же контентом (наше отправленное)
+      const matchingTemp = prev.find(
+        m => m.id.startsWith('temp-') && 
+             m.content === newMessage.content &&
+             m.senderId === newMessage.senderId
+      )
+      
+      if (matchingTemp) {
+        // Заменяем temp на реальное
+        pendingTempIds.current.delete(matchingTemp.id)
+        return prev.map(m => m.id === matchingTemp.id ? {
+          ...newMessage,
+          sender: { id: newMessage.senderId, name: null }
+        } : m)
+      }
+      
+      // Добавляем новое сообщение от собеседника
+      return [...prev, {
+        ...newMessage,
+        sender: { id: newMessage.senderId, name: null }
+      }]
+    })
+    
+    shouldScrollToBottom.current = true
+    scrollToBottom(true)
+  }, [scrollToBottom])
+
+  // Обработчик обновления сообщения (isRead)
+  const handleRealtimeMessageUpdated = useCallback((updatedMessage: RealtimeMessage) => {
+    setMessages(prev => prev.map(m => 
+      m.id === updatedMessage.id 
+        ? { ...m, isRead: updatedMessage.isRead, readAt: updatedMessage.readAt }
+        : m
+    ))
+  }, [])
+
+  // Подписка на Realtime
+  useRealtimeMessages({
+    propertyId,
+    currentUserId,
+    onNewMessage: handleRealtimeNewMessage,
+    onMessageUpdated: handleRealtimeMessageUpdated,
+    enabled: !loading && !!currentUserId,
+  })
+
+  // Загрузка начальных данных (только один раз)
+  const fetchInitialData = useCallback(async () => {
     try {
       const res = await fetch(`/api/messages/${propertyId}`)
       if (!res.ok) {
@@ -80,27 +144,21 @@ export function ChatWindow({
       setProperty(data.property)
       setChatPartner(data.chatPartner)
       setCurrentUserId(data.currentUserId)
+      setLoading(false)
       
-      if (initial) {
-        setLoading(false)
-        // Прокручиваем к последнему сообщению при первой загрузке
-        setTimeout(() => scrollToBottom(true), 100)
-      }
+      setTimeout(() => scrollToBottom(true), 100)
     } catch (err) {
       console.error('Error fetching messages:', err)
-      if (initial) {
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
-        setLoading(false)
-      }
+      setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+      setLoading(false)
     }
   }, [propertyId, scrollToBottom])
 
-  // Пометить сообщения как прочитанные
+  // Пометить как прочитанные
   const markAsRead = useCallback(async () => {
     try {
-      await fetch(`/api/messages/${propertyId}`, {
-        method: 'PATCH',
-      })
+      await fetch(`/api/messages/${propertyId}`, { method: 'PATCH' })
+      notifyMessagesRead()
     } catch (err) {
       console.error('Error marking messages as read:', err)
     }
@@ -108,19 +166,16 @@ export function ChatWindow({
 
   // Первоначальная загрузка
   useEffect(() => {
-    fetchMessages(true)
+    fetchInitialData()
     markAsRead()
-  }, [fetchMessages, markAsRead])
+  }, [fetchInitialData, markAsRead])
 
-  // Polling для обновления сообщений
+  // Помечаем как прочитанные когда окно в фокусе
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchMessages()
-      markAsRead()
-    }, pollingInterval)
-
-    return () => clearInterval(interval)
-  }, [fetchMessages, markAsRead, pollingInterval])
+    const handleFocus = () => markAsRead()
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [markAsRead])
 
   // Отслеживаем позицию скролла
   useEffect(() => {
@@ -129,7 +184,6 @@ export function ChatWindow({
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container
-      // Если пользователь близко к низу - автопрокрутка при новых сообщениях
       shouldScrollToBottom.current = scrollHeight - scrollTop - clientHeight < 100
     }
 
@@ -143,51 +197,51 @@ export function ChatWindow({
   }, [messages, scrollToBottom])
 
   // Отправка сообщения
-  const handleSend = async (content: string) => {
-    if (!content.trim() || !currentUserId) return
+  const handleSend = useCallback(async (content: string) => {
+    if (!currentUserId) return
 
-    const tempId = `temp-${Date.now()}`
-
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const tempMessage: Message = {
       id: tempId,
       senderId: currentUserId,
-      receiverId: chatPartner?.id || "",
+      receiverId: chatPartner?.id || '',
       content,
       isRead: false,
       readAt: null,
       createdAt: new Date().toISOString(),
-      sender: { 
-        id: currentUserId, 
-        name: null
-      }
+      sender: { id: currentUserId, name: null }
     }
+    
+    pendingTempIds.current.add(tempId)
     setMessages(prev => [...prev, tempMessage])
+    shouldScrollToBottom.current = true
     scrollToBottom(true)
 
     try {
-      const res = await fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ propertyId, content }),
       })
 
       if (!res.ok) {
-        throw new Error("Failed to send message")
+        pendingTempIds.current.delete(tempId)
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        return
       }
 
-      const realMessage: Message = await res.json()
-
-      setMessages(prev =>
-        prev.map(m => (m.id === tempId ? realMessage : m))
-      )
-    } catch (err) {
-      console.error("Error sending message:", err)
+      const newMessage = await res.json()
+      pendingTempIds.current.delete(tempId)
       
+      // Заменяем temp на реальное сообщение
+      setMessages(prev => prev.map(m => m.id === tempId ? newMessage : m))
+      
+    } catch (error) {
+      pendingTempIds.current.delete(tempId)
       setMessages(prev => prev.filter(m => m.id !== tempId))
-      alert("Не удалось отправить сообщение. Попробуйте еще раз.")
+      console.error('Network error:', error)
     }
-  }
-
+  }, [currentUserId, chatPartner?.id, propertyId, scrollToBottom])
 
   // Группировка сообщений по датам
   const groupMessagesByDate = (messages: Message[]) => {
@@ -240,7 +294,7 @@ export function ChatWindow({
         {backLink && (
           <Link
             href={backLink}
-            className="p-1.5 -ml-1.5 rounded-lg hover:bg-gray-200 transition-colors lg:hidden"
+            className="p-1.5 -ml-1.5 rounded-lg hover:bg-gray-200 transition-colors"
           >
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </Link>

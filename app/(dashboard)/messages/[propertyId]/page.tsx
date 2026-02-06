@@ -26,7 +26,6 @@ export default function MessagesChatPage({ params }: PageProps) {
           propertyId={propertyId}
           backLink="/messages"
           backLabel="Все чаты"
-          pollingInterval={5000}
         />
       </div>
     </div>

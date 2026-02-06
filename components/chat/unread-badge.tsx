@@ -1,7 +1,7 @@
 // components/chat/unread-badge.tsx
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 interface UnreadBadgeProps {
   className?: string
@@ -11,26 +11,37 @@ export function UnreadBadge({ className = '' }: UnreadBadgeProps) {
   const [count, setCount] = useState(0)
   const [showBadge, setShowBadge] = useState(false)
 
-  useEffect(() => {
-    async function fetchUnread() {
-      try {
-        const res = await fetch('/api/messages/unread')
-        if (res.ok) {
-          const data = await res.json()
-          setCount(data.missed || 0) // Показываем только "пропущенные"
-          setShowBadge(data.showBadge || false)
-        }
-      } catch (error) {
-        console.error('Error fetching unread:', error)
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch('/api/messages/unread')
+      if (res.ok) {
+        const data = await res.json()
+        setCount(data.missed || 0)
+        setShowBadge(data.showBadge || false)
       }
+    } catch (error) {
+      console.error('Error fetching unread:', error)
     }
+  }, [])
 
+  useEffect(() => {
     fetchUnread()
     
-    // Polling каждые 30 секунд
+    // Polling каждые 30 секунд (резервный вариант)
     const interval = setInterval(fetchUnread, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    
+    // Слушаем событие когда сообщения прочитаны
+    const handleMessagesRead = () => {
+      fetchUnread()
+    }
+    
+    window.addEventListener('messages-read', handleMessagesRead)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('messages-read', handleMessagesRead)
+    }
+  }, [fetchUnread])
 
   if (!showBadge || count === 0) {
     return null
@@ -58,23 +69,35 @@ export function useUnreadMessages() {
     byProperty: [] as { propertyId: string; count: number; hasMissed: boolean }[]
   })
 
-  useEffect(() => {
-    async function fetchUnread() {
-      try {
-        const res = await fetch('/api/messages/unread')
-        if (res.ok) {
-          const result = await res.json()
-          setData(result)
-        }
-      } catch (error) {
-        console.error('Error fetching unread:', error)
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch('/api/messages/unread')
+      if (res.ok) {
+        const result = await res.json()
+        setData(result)
       }
+    } catch (error) {
+      console.error('Error fetching unread:', error)
     }
-
-    fetchUnread()
-    const interval = setInterval(fetchUnread, 30000)
-    return () => clearInterval(interval)
   }, [])
 
+  useEffect(() => {
+    fetchUnread()
+    const interval = setInterval(fetchUnread, 30000)
+    
+    const handleMessagesRead = () => fetchUnread()
+    window.addEventListener('messages-read', handleMessagesRead)
+    
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('messages-read', handleMessagesRead)
+    }
+  }, [fetchUnread])
+
   return data
+}
+
+// Функция для вызова обновления badge извне
+export function notifyMessagesRead() {
+  window.dispatchEvent(new Event('messages-read'))
 }
