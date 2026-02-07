@@ -1,9 +1,74 @@
-// app/api/invitations/[code]/route.ts
-import { NextRequest, NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
-import { createClient } from '@/lib/supabase/server'
+/**
+ * API endpoint для работы с приглашениями
+ * 
+ * Путь в проекте: app/api/invitations/[code]/route.ts
+ * 
+ * GET  /api/invitations/{code} - Получить информацию о приглашении
+ * POST /api/invitations/{code} - Принять приглашение (авторизация + редирект)
+ */
 
-// GET /api/invitations/[code] - получить информацию о приглашении
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { prisma } from '@/lib/prisma'
+import { RegionCode } from '@/lib/regions'
+
+// ============================================
+// Утилита для создания Supabase клиента
+// ============================================
+
+async function createSupabaseClient() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // setAll может выбросить ошибку в Server Components
+          }
+        },
+      },
+    }
+  )
+}
+
+// ============================================
+// МАППИНГ СТРАНЫ -> РЕГИОН
+// ============================================
+
+const countryToRegion: Record<string, RegionCode> = {
+  'Poland': 'PL',
+  'Polska': 'PL',
+  'Ukraine': 'UA',
+  'Україна': 'UA',
+  'Germany': 'DE',
+  'Deutschland': 'DE',
+  'Czech Republic': 'CZ',
+  'Česko': 'CZ',
+  'Czechia': 'CZ',
+  'Slovakia': 'SK',
+  'Slovensko': 'SK',
+  'Lithuania': 'LT',
+  'Lietuva': 'LT',
+  'Latvia': 'LV',
+  'Latvija': 'LV',
+  'Estonia': 'EE',
+  'Eesti': 'EE'
+}
+
+// ============================================
+// GET: Информация о приглашении
+// ============================================
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
@@ -11,8 +76,15 @@ export async function GET(
   try {
     const { code } = await params
 
-    const invitation = await prisma.invitation.findUnique({
-      where: { code },
+    // Поиск приглашения
+    const invitation = await prisma.invitation.findFirst({
+      where: {
+        code: code,
+        status: 'PENDING',
+        expiresAt: {
+          gt: new Date()
+        }
+      },
       include: {
         property: {
           select: {
@@ -20,14 +92,7 @@ export async function GET(
             name: true,
             address: true,
             city: true,
-            rooms: true,
-            area: true,
-            userId: true, // Нужно для проверки
-            user: {
-              select: {
-                name: true,
-              }
-            }
+            country: true
           }
         }
       }
@@ -35,232 +100,151 @@ export async function GET(
 
     if (!invitation) {
       return NextResponse.json(
-        { error: 'Invitation not found', code: 'NOT_FOUND' },
+        { error: 'Приглашение не найдено, уже использовано или истекло' },
         { status: 404 }
       )
     }
 
-    if (new Date() > invitation.expiresAt) {
-      return NextResponse.json(
-        { error: 'Invitation expired', code: 'EXPIRED' },
-        { status: 410 }
-      )
-    }
+    // Получаем владельца
+    const owner = await prisma.user.findFirst({
+      where: {
+        properties: {
+          some: { id: invitation.propertyId }
+        }
+      },
+      select: {
+        name: true,
+        email: true
+      }
+    })
 
-    if (invitation.usedAt) {
-      return NextResponse.json(
-        { error: 'Invitation already used', code: 'ALREADY_USED' },
-        { status: 410 }
-      )
-    }
+    // Определяем предложенный регион по стране недвижимости
+    const suggestedRegion: RegionCode = invitation.property.country 
+      ? (countryToRegion[invitation.property.country] || 'PL')
+      : 'PL'
 
     return NextResponse.json({
-      id: invitation.id,
-      property: {
-        id: invitation.property.id,
-        name: invitation.property.name,
-        address: invitation.property.address,
-        city: invitation.property.city,
-        rooms: invitation.property.rooms,
-        area: invitation.property.area,
-        user: invitation.property.user,
-      },
-      email: invitation.email,
-      expiresAt: invitation.expiresAt,
+      valid: true,
+      propertyId: invitation.property.id,
+      propertyName: invitation.property.name,
+      propertyAddress: `${invitation.property.address}, ${invitation.property.city}`,
+      ownerName: owner?.name || 'Владелец',
+      ownerEmail: owner?.email,
+      expiresAt: invitation.expiresAt.toISOString(),
+      suggestedRegion,
+      // Если приглашение на конкретный email
+      invitedEmail: invitation.email
     })
+
   } catch (error) {
-    console.error('Error fetching invitation:', error)
+    console.error('[Get Invitation Error]:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch invitation' },
+      { error: 'Ошибка при загрузке приглашения' },
       { status: 500 }
     )
   }
 }
 
-// POST /api/invitations/[code] - использовать приглашение
+// ============================================
+// POST: Принять приглашение
+// ============================================
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ code: string }> }
 ) {
   try {
     const { code } = await params
-    
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
 
-    if (!authUser) {
+    // Проверка авторизации
+    const supabase = await createSupabaseClient()
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    
+    if (authError || !session) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Необходима авторизация', redirectTo: `/login?invite=${code}` },
         { status: 401 }
       )
     }
 
-    const invitation = await prisma.invitation.findUnique({
-      where: { code },
+    const userId = session.user.id
+    const userEmail = session.user.email
+
+    // Поиск приглашения
+    const invitation = await prisma.invitation.findFirst({
+      where: {
+        code: code,
+        status: 'PENDING',
+        expiresAt: {
+          gt: new Date()
+        }
+      },
       include: {
-        property: true
+        property: {
+          select: {
+            id: true,
+            userId: true,
+            country: true
+          }
+        }
       }
     })
 
     if (!invitation) {
       return NextResponse.json(
-        { error: 'Invitation not found' },
+        { error: 'Приглашение не найдено, уже использовано или истекло' },
         { status: 404 }
       )
     }
 
-    if (new Date() > invitation.expiresAt) {
+    // Проверка: приглашение на конкретный email?
+    if (invitation.email && invitation.email.toLowerCase() !== userEmail?.toLowerCase()) {
       return NextResponse.json(
-        { error: 'Invitation expired' },
-        { status: 410 }
+        { error: 'Это приглашение предназначено для другого email' },
+        { status: 403 }
       )
     }
 
-    if (invitation.usedAt) {
+    // Проверка: пользователь не является владельцем этой недвижимости
+    if (invitation.property.userId === userId) {
       return NextResponse.json(
-        { error: 'Invitation already used' },
-        { status: 410 }
-      )
-    }
-
-    // ВАЖНО: Пользователь не может быть жильцом своей квартиры
-    if (invitation.property.userId === authUser.id) {
-      return NextResponse.json(
-        { error: 'Вы не можете стать жильцом собственной квартиры' },
+        { error: 'Вы не можете принять приглашение на собственную недвижимость' },
         { status: 400 }
       )
     }
 
-    const result = await prisma.$transaction(async (tx) => {
-      // Проверяем существующего пользователя
-      const existingUser = await tx.user.findUnique({
-        where: { id: authUser.id }
-      })
-
-      let user
-
-      if (existingUser) {
-        // Добавляем роль жильца если её нет
-        if (!existingUser.isTenant) {
-          user = await tx.user.update({
-            where: { id: authUser.id },
-            data: { isTenant: true }
-          })
-        } else {
-          user = existingUser
-        }
-      } else {
-        // Новый пользователь - создаём как жильца
-        user = await tx.user.create({
-          data: {
-            id: authUser.id,
-            email: authUser.email!,
-            name: authUser.user_metadata?.name || null,
-            isOwner: false,
-            isTenant: true,
-          }
-        })
+    // Проверка: пользователь уже является жильцом этой недвижимости
+    const existingTenant = await prisma.tenant.findFirst({
+      where: {
+        propertyId: invitation.propertyId,
+        tenantUserId: userId,
+        isActive: true
       }
-
-      // Проверяем, не является ли уже жильцом этой квартиры
-      const existingTenant = await tx.tenant.findFirst({
-        where: {
-          tenantUserId: user.id,
-          propertyId: invitation.propertyId,
-        }
-      })
-
-      if (existingTenant) {
-        return { 
-          user, 
-          tenant: existingTenant, 
-          alreadyTenant: true,
-        }
-      }
-
-      // Создаём запись Tenant
-      const tenant = await tx.tenant.create({
-        data: {
-          userId: invitation.property.userId,
-          propertyId: invitation.propertyId,
-          tenantUserId: user.id,
-          firstName: authUser.user_metadata?.name?.split(' ')[0] || 'Имя',
-          lastName: authUser.user_metadata?.name?.split(' ').slice(1).join(' ') || 'Фамилия',
-          email: authUser.email,
-          isActive: true,
-          moveInDate: new Date(),
-        }
-      })
-
-      await tx.property.update({
-        where: { id: invitation.propertyId },
-        data: { status: 'OCCUPIED' }
-      })
-
-      await tx.invitation.update({
-        where: { id: invitation.id },
-        data: {
-          usedAt: new Date(),
-          usedBy: user.id,
-        }
-      })
-
-      return { user, tenant, alreadyTenant: false }
     })
+
+    if (existingTenant) {
+      return NextResponse.json(
+        { error: 'Вы уже являетесь жильцом этой недвижимости' },
+        { status: 400 }
+      )
+    }
+
+    // ============================================
+    // ВАЖНО: Редирект на страницу завершения регистрации
+    // Вместо автоматического создания tenant здесь,
+    // перенаправляем на форму для ввода полных данных
+    // ============================================
 
     return NextResponse.json({
       success: true,
-      tenant: result.tenant,
-      alreadyTenant: result.alreadyTenant,
-      isOwner: result.user.isOwner,
-      isTenant: result.user.isTenant,
+      message: 'Приглашение валидно. Перенаправление на завершение регистрации.',
+      redirectTo: `/invite/complete/${code}`
     })
+
   } catch (error) {
-    console.error('Error using invitation:', error)
+    console.error('[Accept Invitation Error]:', error)
     return NextResponse.json(
-      { error: 'Failed to use invitation' },
-      { status: 500 }
-    )
-  }
-}
-
-// DELETE /api/invitations/[code] - отозвать приглашение
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ code: string }> }
-) {
-  try {
-    const { code } = await params
-    
-    const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
-
-    if (!authUser) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const invitation = await prisma.invitation.findFirst({
-      where: {
-        code,
-        property: {
-          userId: authUser.id
-        }
-      }
-    })
-
-    if (!invitation) {
-      return NextResponse.json({ error: 'Invitation not found' }, { status: 404 })
-    }
-
-    await prisma.invitation.delete({
-      where: { id: invitation.id }
-    })
-
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Error deleting invitation:', error)
-    return NextResponse.json(
-      { error: 'Failed to delete invitation' },
+      { error: 'Ошибка при обработке приглашения' },
       { status: 500 }
     )
   }

@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: добавлены индексы, множественные роли, constraints
+// Обновлено: добавлена поддержка регионов, лицензионное соглашение, расширенные данные tenant
 
 generator client {
   provider = "prisma-client-js"
@@ -22,9 +22,19 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // НОВОЕ: Множественные роли (вместо одной роли)
-  isOwner  Boolean @default(false)  // Может добавлять квартиры
-  isTenant Boolean @default(false)  // Может быть жильцом
+  // Множественные роли
+  isOwner  Boolean @default(false)
+  isTenant Boolean @default(false)
+
+  // НОВОЕ: Региональные настройки
+  regionCode String  @default("PL") // "PL" | "UA" | "DE" | "CZ" | "SK" | "LT" | "LV" | "EE"
+  language   String  @default("pl") // Язык интерфейса
+  timezone   String  @default("Europe/Warsaw")
+
+  // НОВОЕ: Лицензионное соглашение
+  termsAcceptedAt   DateTime? // Когда принято соглашение
+  privacyAcceptedAt DateTime? // Когда принята политика конфиденциальности
+  termsVersion      String?   // Версия соглашения ("1.0", "1.1", etc.)
 
   // Банковские реквизиты (для владельцев)
   bankName      String?
@@ -56,27 +66,38 @@ model User {
   @@map("users")
 }
 
-// УДАЛЕНО: enum UserRole - теперь используем isOwner/isTenant
-
 // ============== ПРИГЛАШЕНИЯ ==============
 
 model Invitation {
-  id         String    @id @default(uuid())
+  id         String           @id @default(uuid())
   propertyId String
-  email      String?   // Опционально - можно пригласить конкретный email
-  code       String    @unique
+  email      String?          // Опционально - можно пригласить конкретный email
+  code       String           @unique
+  status     InvitationStatus @default(PENDING) // НОВОЕ: статус приглашения
   expiresAt  DateTime
   usedAt     DateTime?
-  usedBy     String?   // ID пользователя который использовал
-  createdAt  DateTime  @default(now())
+  usedBy     String?          // ID пользователя который использовал
+  createdAt  DateTime         @default(now())
+
+  // НОВОЕ: Связь с созданным tenant
+  tenantId String? // ID tenant, созданного при принятии приглашения
 
   // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   // Индексы для производительности
+  @@index([code])
   @@index([expiresAt])
-  @@index([propertyId, usedAt])
+  @@index([propertyId, status])
   @@map("invitations")
+}
+
+// НОВОЕ: Статус приглашения
+enum InvitationStatus {
+  PENDING  // Ожидает использования
+  ACCEPTED // Принято
+  EXPIRED  // Истекло
+  REVOKED  // Отозвано владельцем
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
@@ -88,6 +109,7 @@ model Property {
   address     String
   city        String
   postalCode  String?
+  country     String         @default("Poland") // НОВОЕ: страна для определения региона
   area        Float?
   rooms       Int?
   floor       Int?
@@ -129,12 +151,34 @@ model Tenant {
   lastName     String
   email        String?
   phone        String?
-  pesel        String?
-  moveInDate   DateTime?
-  moveOutDate  DateTime?
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+
+  // НОВОЕ: Универсальный национальный ID (вместо только PESEL)
+  nationalId     String? // Значение: "12345678901"
+  nationalIdType String? // Тип: "PESEL" | "INN" | "Steuer-ID" | "Rodné číslo" | etc.
+
+  // DEPRECATED: Оставлено для обратной совместимости
+  // После миграции данных можно удалить
+  pesel String? // @deprecated - используйте nationalId + nationalIdType
+
+  // НОВОЕ: Региональные настройки
+  regionCode String @default("PL")
+
+  // НОВОЕ: Экстренный контакт
+  emergencyContact String? // ФИО контактного лица
+  emergencyPhone   String? // Телефон экстренного контакта
+
+  // Даты аренды
+  moveInDate  DateTime?
+  moveOutDate DateTime?
+  isActive    Boolean   @default(true)
+
+  // НОВОЕ: Лицензионное соглашение
+  termsAcceptedAt         DateTime? // Когда принято соглашение
+  termsVersion            String?   // Версия соглашения
+  registrationCompletedAt DateTime? // Когда завершена полная регистрация
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Связи
   user          User      @relation("OwnerTenants", fields: [userId], references: [id], onDelete: Cascade)
@@ -148,6 +192,7 @@ model Tenant {
   @@index([email])
   @@index([userId, isActive])
   @@index([tenantUserId])
+  @@index([regionCode])
   @@map("tenants")
 }
 
