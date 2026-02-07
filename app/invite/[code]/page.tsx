@@ -12,21 +12,17 @@ import { Label } from '@/components/ui/label'
 import { PasswordStrength, validatePassword } from '@/components/password-strength'
 import { createClient } from '@/lib/supabase/client'
 
+// Интерфейс соответствует формату ответа API /api/invitations/[code]
 interface InvitationData {
-  id: string
-  email: string | null
+  valid: boolean
+  propertyId: string
+  propertyName: string
+  propertyAddress: string
+  ownerName: string
+  ownerEmail?: string
   expiresAt: string
-  property: {
-    id: string
-    name: string
-    address: string
-    city: string
-    rooms: number | null
-    area: number | null
-    user: {
-      name: string | null
-    }
-  }
+  suggestedRegion?: string
+  invitedEmail: string | null
 }
 
 export default function InvitePage() {
@@ -55,27 +51,40 @@ export default function InvitePage() {
       const data = await res.json()
 
       if (!res.ok) {
-        if (data.code === 'NOT_FOUND') {
+        // Обработка различных ошибок от API
+        if (data.code === 'NOT_FOUND' || res.status === 404) {
           setError('Приглашение не найдено')
         } else if (data.code === 'EXPIRED') {
           setError('Срок действия приглашения истёк')
         } else if (data.code === 'ALREADY_USED') {
           setError('Это приглашение уже использовано')
         } else {
-          setError('Ошибка загрузки приглашения')
+          setError(data.error || 'Ошибка загрузки приглашения')
         }
         setStep('error')
         return
       }
 
+      // Проверяем что данные валидны
+      if (!data.propertyName || !data.propertyAddress) {
+        setError('Некорректные данные приглашения')
+        setStep('error')
+        return
+      }
+
       setInvitation(data)
-      if (data.email) setEmail(data.email)
+      
+      // Устанавливаем email если указан в приглашении
+      if (data.invitedEmail) {
+        setEmail(data.invitedEmail)
+      }
       
       // Сохраняем код для использования после подтверждения email
       localStorage.setItem('pendingInviteCode', code)
       
       setStep('register')
     } catch (err) {
+      console.error('Error fetching invitation:', err)
       setError('Ошибка соединения')
       setStep('error')
     } finally {
@@ -169,72 +178,102 @@ export default function InvitePage() {
     }
   }
 
+  // Состояние загрузки
   if (step === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        <Card className="p-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+          <p className="mt-4 text-gray-600">Загрузка приглашения...</p>
+        </Card>
       </div>
     )
   }
 
+  // Состояние ошибки
   if (step === 'error') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="p-6 max-w-md w-full text-center">
+        <Card className="max-w-md w-full p-8 text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Ошибка</h2>
-          <p className="text-gray-500 mb-4">{error}</p>
-          <Link href="/"><Button variant="outline">На главную</Button></Link>
+          <h1 className="text-xl font-semibold mb-2">Ошибка</h1>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <Link href="/login">
+            <Button variant="outline" className="w-full">
+              Перейти на страницу входа
+            </Button>
+          </Link>
         </Card>
       </div>
     )
   }
 
+  // Успешная отправка письма подтверждения
   if (step === 'success') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="p-6 max-w-md w-full text-center">
+        <Card className="max-w-md w-full p-8 text-center">
           <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Проверьте почту!</h2>
-          <p className="text-gray-500 mb-4">
-            Мы отправили ссылку на <strong>{email}</strong>
+          <h1 className="text-xl font-semibold mb-2">Проверьте почту</h1>
+          <p className="text-gray-600 mb-4">
+            Мы отправили письмо на <strong>{email}</strong>
           </p>
-          <p className="text-sm text-yellow-600">
-            ⚠️ После подтверждения вы будете добавлены в квартиру
+          <p className="text-sm text-gray-500">
+            Нажмите на ссылку в письме для завершения регистрации
           </p>
         </Card>
       </div>
     )
   }
 
+  // Защита от отсутствия данных приглашения
+  if (!invitation) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Ошибка</h1>
+          <p className="text-gray-600 mb-6">Не удалось загрузить данные приглашения</p>
+          <Link href="/login">
+            <Button variant="outline" className="w-full">
+              Перейти на страницу входа
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    )
+  }
+
+  // Основная форма регистрации/входа
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-6">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <Building2 className="h-10 w-10 text-blue-600" />
-            <span className="text-3xl font-bold text-gray-900">Flatro</span>
-          </Link>
-        </div>
-
-        {invitation && (
-          <Card className="p-4 mb-4 bg-blue-50 border-blue-200">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Home className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-blue-600 font-medium">Вас приглашают в:</p>
-                <p className="font-semibold text-gray-900">{invitation.property.name}</p>
-                <p className="text-sm text-gray-600 flex items-center gap-1">
-                  <MapPin className="h-3 w-3" />
-                  {invitation.property.address}, {invitation.property.city}
-                </p>
-              </div>
+      <div className="max-w-md w-full space-y-4">
+        {/* Информация о квартире */}
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <Building2 className="h-6 w-6 text-blue-600" />
             </div>
-          </Card>
-        )}
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-semibold text-gray-900 mb-1">
+                Приглашение в квартиру
+              </h1>
+              <div className="flex items-center gap-2 text-gray-600 mb-1">
+                <Home className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{invitation.propertyName}</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <MapPin className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{invitation.propertyAddress}</span>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Владелец: {invitation.ownerName || 'Не указан'}
+              </p>
+            </div>
+          </div>
+        </Card>
 
+        {/* Форма */}
         <Card className="p-6">
           {step === 'login' ? (
             <>
@@ -242,22 +281,44 @@ export default function InvitePage() {
               <form onSubmit={handleLogin} className="space-y-4">
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />{error}
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{error}</span>
                   </div>
                 )}
                 <div>
                   <Label>Email</Label>
-                  <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      className="pl-10"
+                      required 
+                    />
+                  </div>
                 </div>
                 <div>
                   <Label>Пароль</Label>
-                  <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      className="pl-10"
+                      required 
+                    />
+                  </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={submitting}>
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Войти и принять'}
                 </Button>
               </form>
-              <button onClick={() => setStep('register')} className="w-full mt-4 text-sm text-blue-600">
+              <button 
+                onClick={() => { setStep('register'); setError(null) }} 
+                className="w-full mt-4 text-sm text-blue-600 hover:underline"
+              >
                 Создать новый аккаунт
               </button>
             </>
@@ -267,28 +328,53 @@ export default function InvitePage() {
               <form onSubmit={handleRegister} className="space-y-4">
                 {error && (
                   <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
-                    <AlertCircle className="h-4 w-4" />{error}
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{error}</span>
                   </div>
                 )}
                 <div>
                   <Label>Ваше имя</Label>
                   <div className="relative">
                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input placeholder="Иван Петров" value={name} onChange={(e) => setName(e.target.value)} className="pl-10" required />
+                    <Input 
+                      placeholder="Иван Петров" 
+                      value={name} 
+                      onChange={(e) => setName(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
                   </div>
                 </div>
                 <div>
                   <Label>Email</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required disabled={!!invitation?.email} />
+                    <Input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                      disabled={!!invitation.invitedEmail}
+                    />
                   </div>
+                  {invitation.invitedEmail && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Приглашение привязано к этому email
+                    </p>
+                  )}
                 </div>
                 <div>
                   <Label>Пароль</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+                    <Input 
+                      type="password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
                   </div>
                   <PasswordStrength password={password} />
                 </div>
@@ -296,20 +382,37 @@ export default function InvitePage() {
                   <Label>Подтвердите пароль</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10" required />
+                    <Input 
+                      type="password" 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
                   </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={submitting}>
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Зарегистрироваться'}
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать аккаунт'}
                 </Button>
               </form>
-              <div className="mt-4 text-center text-sm text-gray-500">
-                Уже есть аккаунт?{' '}
-                <button onClick={() => setStep('login')} className="text-blue-600">Войти</button>
-              </div>
+              <button 
+                onClick={() => { setStep('login'); setError(null) }} 
+                className="w-full mt-4 text-sm text-blue-600 hover:underline"
+              >
+                Уже есть аккаунт? Войти
+              </button>
             </>
           )}
         </Card>
+
+        {/* Информация о сроке действия */}
+        <p className="text-center text-xs text-gray-500">
+          Приглашение действительно до {new Date(invitation.expiresAt).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })}
+        </p>
       </div>
     </div>
   )

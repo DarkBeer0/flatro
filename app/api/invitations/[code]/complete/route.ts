@@ -135,11 +135,16 @@ export async function GET(
       )
     }
 
-    // Получаем владельца
+    // Получаем владельца - используем firstName/lastName
     const owner = await prisma.user.findUnique({
       where: { id: invitation.property.userId },
-      select: { name: true }
+      select: { firstName: true, lastName: true }
     })
+
+    // Собираем полное имя владельца
+    const ownerName = owner 
+      ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Владелец'
+      : 'Владелец'
 
     // Определяем предложенный регион
     const suggestedRegion: RegionCode = invitation.property.country 
@@ -161,7 +166,7 @@ export async function GET(
       propertyId: invitation.property.id,
       propertyName: invitation.property.name,
       propertyAddress: `${invitation.property.address}, ${invitation.property.city}`,
-      ownerName: owner?.name || 'Владелец',
+      ownerName,
       expiresAt: invitation.expiresAt.toISOString(),
       suggestedRegion,
       userData,
@@ -323,7 +328,8 @@ export async function POST(
             privacyAcceptedAt: now,
             termsVersion: body.termsVersion,
             // Обновляем имя если пустое
-            name: user.name || `${body.firstName} ${body.lastName}`,
+            firstName: user.firstName || body.firstName.trim(),
+            lastName: user.lastName || body.lastName.trim(),
             phone: user.phone || (body.phone ? normalizePhone(body.phone, regionCode) : null)
           }
         })
@@ -333,7 +339,8 @@ export async function POST(
           data: {
             id: userId,
             email: userEmail!,
-            name: `${body.firstName} ${body.lastName}`,
+            firstName: body.firstName.trim(),
+            lastName: body.lastName.trim(),
             phone: body.phone ? normalizePhone(body.phone, regionCode) : null,
             isTenant: true,
             regionCode: regionCode,
@@ -380,44 +387,25 @@ export async function POST(
         }
       })
 
-      // 4. Обновляем статус недвижимости (если была VACANT)
+      // 4. Обновляем статус недвижимости
       await tx.property.update({
         where: { id: invitation.propertyId },
-        data: {
-          status: 'OCCUPIED'
-        }
+        data: { status: 'OCCUPIED' }
       })
 
       return { user, tenant }
     })
 
-    // Логирование
-    console.log(`[Tenant Registration Complete] User: ${userId}, Tenant: ${result.tenant.id}, Property: ${invitation.propertyId}, Region: ${regionCode}`)
-
     return NextResponse.json({
       success: true,
       message: 'Регистрация успешно завершена',
-      tenant: {
-        id: result.tenant.id,
-        firstName: result.tenant.firstName,
-        lastName: result.tenant.lastName
-      },
       redirectTo: '/tenant/dashboard'
     })
 
   } catch (error) {
-    console.error('[Complete Registration Error]:', error)
-    
-    // Проверка на уникальность
-    if (error instanceof Error && error.message.includes('Unique constraint')) {
-      return NextResponse.json(
-        { error: 'Вы уже зарегистрированы как жилец' },
-        { status: 409 }
-      )
-    }
-
+    console.error('[Complete Tenant Registration Error]:', error)
     return NextResponse.json(
-      { error: 'Внутренняя ошибка сервера' },
+      { error: 'Ошибка при завершении регистрации' },
       { status: 500 }
     )
   }

@@ -6,7 +6,7 @@ import { Prisma } from '@prisma/client'
 
 // === VERCEL CONFIGURATION ===
 export const runtime = 'nodejs'
-export const maxDuration = 60 // seconds - важно для cold starts
+export const maxDuration = 60
 
 // === STRUCTURED LOGGING ===
 function authLog(event: string, data: Record<string, unknown> = {}) {
@@ -15,11 +15,9 @@ function authLog(event: string, data: Record<string, unknown> = {}) {
     service: 'auth-callback',
     event,
     ...data,
-    // Mask PII
     ...(typeof data.email === 'string'
-  ? { email: data.email.replace(/(.{2}).*@/, '$1***@') }
-  : {}),
-
+      ? { email: data.email.replace(/(.{2}).*@/, '$1***@') }
+      : {}),
   }
   console.log(JSON.stringify(logData))
 }
@@ -43,8 +41,6 @@ function getErrorMessage(error: { code?: string; message?: string }): string {
 // === PRODUCTION REDIRECT HELPER ===
 function getRedirectURL(request: Request, path: string): string {
   const { origin } = new URL(request.url)
-  
-  // На Vercel используем x-forwarded-host для правильного домена
   const forwardedHost = request.headers.get('x-forwarded-host')
   const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
   
@@ -59,25 +55,22 @@ function getRedirectURL(request: Request, path: string): string {
 async function ensureUserExists(
   userId: string, 
   email: string, 
-  name: string | null,
+  firstName: string | null,
+  lastName: string | null,
   roles: { isOwner: boolean; isTenant: boolean }
 ) {
-  // Используем upsert с NON-EMPTY update для атомарности
-  // Пустой update = SELECT + INSERT (race condition)
-  // Non-empty update = INSERT ... ON CONFLICT DO UPDATE (атомарно)
   return prisma.user.upsert({
     where: { id: userId },
     create: {
       id: userId,
       email,
-      name,
+      firstName,
+      lastName,
       isOwner: roles.isOwner,
       isTenant: roles.isTenant,
     },
     update: {
-      // Обновляем email на случай если изменился в Supabase
       email,
-      // Добавляем роли, но не убираем существующие
       ...(roles.isOwner && { isOwner: true }),
       ...(roles.isTenant && { isTenant: true }),
     },
@@ -87,7 +80,7 @@ async function ensureUserExists(
 // === IDEMPOTENT INVITATION PROCESSING ===
 async function processInvitation(
   inviteCode: string,
-  user: { id: string; email?: string; user_metadata?: { name?: string } }
+  user: { id: string; email?: string; user_metadata?: { first_name?: string; last_name?: string; name?: string } }
 ): Promise<{ success: boolean; redirectPath: string; error?: string }> {
   
   authLog('invite_processing_start', { inviteCode, userId: user.id })
@@ -97,7 +90,6 @@ async function processInvitation(
     include: { property: true },
   })
 
-  // Валидация приглашения
   if (!invitation) {
     authLog('invite_not_found', { inviteCode })
     return { success: false, redirectPath: '/login?error=invite_not_found', error: 'Приглашение не найдено' }
@@ -105,7 +97,6 @@ async function processInvitation(
 
   if (invitation.usedAt) {
     authLog('invite_already_used', { inviteCode, usedBy: invitation.usedBy })
-    // Если использовано этим же пользователем — это OK (повторный переход)
     if (invitation.usedBy === user.id) {
       const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
       return { 
@@ -121,28 +112,32 @@ async function processInvitation(
     return { success: false, redirectPath: '/login?error=invite_expired', error: 'Приглашение истекло' }
   }
 
-  // Проверка: пользователь не может быть жильцом своей квартиры
   if (invitation.property.userId === user.id) {
     authLog('invite_self_error', { inviteCode, userId: user.id })
     return { success: false, redirectPath: '/dashboard?error=cannot_invite_self', error: 'Нельзя пригласить себя' }
   }
 
-  // === ТРАНЗАКЦИЯ: создание/обновление user + tenant + invitation ===
   try {
     await prisma.$transaction(async (tx) => {
+      // Получаем имя из метаданных
+      const nameParts = (user.user_metadata?.name || '').split(' ')
+      const firstName = user.user_metadata?.first_name || nameParts[0] || null
+      const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null
+
       // 1. Ensure user exists с ролью tenant
       await tx.user.upsert({
         where: { id: user.id },
         create: {
           id: user.id,
           email: user.email!,
-          name: user.user_metadata?.name || null,
+          firstName,
+          lastName,
           isOwner: false,
           isTenant: true,
         },
         update: {
           email: user.email!,
-          isTenant: true, // Добавляем роль
+          isTenant: true,
         },
       })
 
@@ -152,14 +147,13 @@ async function processInvitation(
       })
 
       if (!existingTenant) {
-        const nameParts = (user.user_metadata?.name || '').split(' ')
         await tx.tenant.create({
           data: {
             userId: invitation.property.userId,
             propertyId: invitation.propertyId,
             tenantUserId: user.id,
-            firstName: nameParts[0] || 'Имя',
-            lastName: nameParts.slice(1).join(' ') || 'Фамилия',
+            firstName: firstName || 'Имя',
+            lastName: lastName || 'Фамилия',
             email: user.email,
             isActive: true,
             moveInDate: new Date(),
@@ -173,7 +167,7 @@ async function processInvitation(
         })
       }
 
-      // 4. Mark invitation as used (idempotent - если уже used, ничего не сломается)
+      // 4. Mark invitation as used
       await tx.invitation.update({
         where: { id: invitation.id },
         data: {
@@ -182,12 +176,11 @@ async function processInvitation(
         },
       })
     }, {
-      timeout: 10000, // 10 секунд на транзакцию
+      timeout: 10000,
     })
 
     authLog('invite_processed_success', { inviteCode, userId: user.id })
 
-    // Проверяем финальные роли для редиректа
     const finalUser = await prisma.user.findUnique({ where: { id: user.id } })
     
     if (finalUser?.isOwner) {
@@ -202,7 +195,6 @@ async function processInvitation(
       error: error instanceof Error ? error.message : 'Unknown error',
     })
 
-    // P2002 = unique constraint = race condition, но данные созданы
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       authLog('invite_race_condition_handled', { inviteCode })
       const finalUser = await prisma.user.findUnique({ where: { id: user.id } })
@@ -227,84 +219,67 @@ export async function GET(request: Request) {
 
   authLog('callback_start', { 
     hasCode: !!code, 
-    hasInvite: !!inviteCode, 
-    next,
-    errorParam,
+    hasInvite: !!inviteCode,
+    hasNext: !!next,
+    hasError: !!errorParam 
   })
 
-  // === Обработка ошибок от Supabase ===
+  // === Handle Error from Supabase ===
   if (errorParam) {
+    const errorMsg = ERROR_MESSAGES[errorParam] || errorDescription || errorParam
     authLog('supabase_error', { error: errorParam, description: errorDescription })
-    const message = encodeURIComponent(errorDescription || errorParam)
-    return NextResponse.redirect(getRedirectURL(request, `/login?error=${message}`))
+    return NextResponse.redirect(getRedirectURL(request, `/login?error=${encodeURIComponent(errorMsg)}`))
   }
 
-  // === Нет кода — редирект на логин ===
+  // === No Code = Direct Access ===
   if (!code) {
-    authLog('no_code_provided')
-    return NextResponse.redirect(getRedirectURL(request, '/login?error=no_code'))
+    authLog('no_code_redirect')
+    return NextResponse.redirect(getRedirectURL(request, '/login'))
   }
 
-  // === Exchange code for session ===
+  // === Exchange Code for Session ===
   const supabase = await createClient()
-  const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+  const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-  if (error) {
-    authLog('exchange_code_error', { 
-      code: error.code, 
-      message: error.message,
-      status: error.status,
+  if (exchangeError || !data.user) {
+    const errorMsg = exchangeError ? getErrorMessage(exchangeError) : 'Ошибка авторизации'
+    authLog('code_exchange_failed', { 
+      error: exchangeError?.message,
+      code: exchangeError?.code 
     })
-    const message = encodeURIComponent(getErrorMessage(error))
-    return NextResponse.redirect(getRedirectURL(request, `/login?error=${message}`))
-  }
-
-  if (!data.user) {
-    authLog('no_user_in_session')
-    return NextResponse.redirect(getRedirectURL(request, '/login?error=no_user'))
+    return NextResponse.redirect(getRedirectURL(request, `/login?error=${encodeURIComponent(errorMsg)}`))
   }
 
   const user = data.user
-  authLog('session_created', { userId: user.id, email: user.email })
+  authLog('code_exchange_success', { userId: user.id, email: user.email })
 
-  // === Password Reset Flow ===
-  if (next === '/reset-password') {
-    const existingUser = await prisma.user.findUnique({ where: { id: user.id } })
-    
-    if (!existingUser) {
-      authLog('password_reset_user_not_found', { userId: user.id })
-      await supabase.auth.signOut()
-      return NextResponse.redirect(getRedirectURL(request, '/login?error=account_not_found'))
-    }
-
-    authLog('password_reset_redirect')
-    return NextResponse.redirect(getRedirectURL(request, '/reset-password'))
-  }
-
-  // === Invite Flow ===
-  // Приоритет: URL param > user_metadata (localStorage fallback от старой логики)
-  const pendingInvite = inviteCode || user.user_metadata?.pendingInviteCode
-
-  if (pendingInvite) {
+  // === Invitation Flow ===
+  if (inviteCode) {
     try {
-      const result = await processInvitation(pendingInvite, user)
+      const result = await processInvitation(inviteCode, user)
       return NextResponse.redirect(getRedirectURL(request, result.redirectPath))
     } catch (err) {
-      authLog('invite_fatal_error', { 
-        inviteCode: pendingInvite,
+      authLog('invite_critical_error', {
+        inviteCode,
+        userId: user.id,
         error: err instanceof Error ? err.message : 'Unknown',
       })
-      // При критической ошибке всё равно создаём пользователя и пускаем
     }
   }
 
   // === Standard Registration/Login Flow ===
   try {
+    // Получаем имя из метаданных
+    const nameParts = (user.user_metadata?.name || '').split(' ')
+    const firstName = user.user_metadata?.first_name || nameParts[0] || null
+    const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null
+
     const dbUser = await ensureUserExists(
       user.id,
       user.email!,
-      user.user_metadata?.name || null,
-      { isOwner: true, isTenant: false } // По умолчанию — владелец
+      firstName,
+      lastName,
+      { isOwner: true, isTenant: false }
     )
 
     authLog('user_ensured', { 
@@ -313,7 +288,6 @@ export async function GET(request: Request) {
       isTenant: dbUser.isTenant,
     })
 
-    // Редирект по ролям
     if (dbUser.isOwner) {
       return NextResponse.redirect(getRedirectURL(request, '/dashboard'))
     }
@@ -322,7 +296,6 @@ export async function GET(request: Request) {
       return NextResponse.redirect(getRedirectURL(request, '/tenant/dashboard'))
     }
 
-    // Fallback — если нет ролей (не должно случиться)
     authLog('no_roles_fallback', { userId: dbUser.id })
     await prisma.user.update({
       where: { id: user.id },
@@ -337,7 +310,6 @@ export async function GET(request: Request) {
       code: err instanceof Prisma.PrismaClientKnownRequestError ? err.code : undefined,
     })
 
-    // P2002 = user already exists (race condition) — просто fetch и redirect
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       const existingUser = await prisma.user.findUnique({ where: { id: user.id } })
       if (existingUser) {

@@ -18,7 +18,7 @@ export async function GET(
 
     const { propertyId } = await params
     const { searchParams } = new URL(request.url)
-    const cursor = searchParams.get('cursor') // ID последнего сообщения для пагинации
+    const cursor = searchParams.get('cursor')
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
 
     // Проверяем доступ к чату
@@ -33,7 +33,8 @@ export async function GET(
           user: {
             select: {
               id: true,
-              name: true,
+              firstName: true,
+              lastName: true,
               email: true,
             }
           },
@@ -52,12 +53,12 @@ export async function GET(
         where: { id: authUser.id },
         select: {
           id: true,
-          name: true,
+          firstName: true,
+          lastName: true,
           isOwner: true,
           isTenant: true,
         }
       }),
-      // Проверяем является ли пользователь арендатором этой квартиры
       prisma.tenant.findFirst({
         where: {
           tenantUserId: authUser.id,
@@ -76,89 +77,94 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Проверяем права доступа
     const isOwner = property.userId === authUser.id
     const isTenantOfProperty = !!tenantRecord
 
     if (!isOwner && !isTenantOfProperty) {
-      return NextResponse.json(
-        { error: 'You do not have access to this chat' },
-        { status: 403 }
-      )
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Получаем сообщения с пагинацией
+    // Получаем сообщения
     const messages = await prisma.message.findMany({
       where: { propertyId },
       orderBy: { createdAt: 'desc' },
-      take: limit + 1, // +1 чтобы определить есть ли ещё
+      take: limit,
       ...(cursor && {
         cursor: { id: cursor },
-        skip: 1, // Пропускаем cursor
+        skip: 1,
       }),
       select: {
         id: true,
+        content: true,
+        createdAt: true,
+        isRead: true,
         senderId: true,
         receiverId: true,
-        content: true,
-        isRead: true,
-        readAt: true,
-        createdAt: true,
         sender: {
           select: {
             id: true,
-            name: true,
+            firstName: true,
+            lastName: true,
           }
         }
       }
     })
 
-    // Проверяем есть ли ещё сообщения
-    const hasMore = messages.length > limit
-    if (hasMore) {
-      messages.pop() // Убираем лишнее сообщение
+    // Помечаем непрочитанные как прочитанные
+    const unreadIds = messages
+      .filter(m => !m.isRead && m.receiverId === authUser.id)
+      .map(m => m.id)
+
+    if (unreadIds.length > 0) {
+      await prisma.message.updateMany({
+        where: { id: { in: unreadIds } },
+        data: { isRead: true }
+      })
     }
 
-    // Определяем собеседника
-    let chatPartner: { id: string; name: string | null; email?: string }
-
-    if (isOwner) {
-      // Для владельца — информация об арендаторе
-      const tenant = property.tenants[0]
-      chatPartner = {
-        id: tenant?.tenantUserId || '',
-        name: tenant ? `${tenant.firstName} ${tenant.lastName}` : 'Нет арендатора',
-      }
-    } else {
-      // Для арендатора — информация о владельце
-      chatPartner = {
-        id: property.user.id,
-        name: property.user.name,
-        email: property.user.email,
-      }
-    }
+    const ownerName = [property.user.firstName, property.user.lastName].filter(Boolean).join(' ') || 'Владелец'
+    const userName = [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || 'Пользователь'
 
     return NextResponse.json({
       property: {
         id: property.id,
         name: property.name,
         address: property.address,
+        owner: {
+          id: property.user.id,
+          name: ownerName,
+          email: property.user.email,
+        },
+        tenants: property.tenants.map(t => ({
+          id: t.id,
+          name: `${t.firstName} ${t.lastName}`.trim(),
+          tenantUserId: t.tenantUserId,
+        }))
       },
-      chatPartner,
-      messages: messages.reverse(), // Возвращаем в хронологическом порядке
-      hasMore,
-      nextCursor: hasMore ? messages[messages.length - 1]?.id : null,
-      currentUserId: authUser.id,
+      messages: messages.map(m => ({
+        ...m,
+        sender: {
+          id: m.sender.id,
+          name: [m.sender.firstName, m.sender.lastName].filter(Boolean).join(' ') || 'Пользователь',
+        }
+      })).reverse(),
+      currentUser: {
+        id: dbUser.id,
+        name: userName,
+        isOwner,
+        isTenantOfProperty,
+      },
+      hasMore: messages.length === limit,
+      nextCursor: messages.length === limit ? messages[messages.length - 1].id : null,
     })
-
   } catch (error) {
-    console.error('Error fetching chat history:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error fetching messages:', error)
+    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
   }
 }
 
-// PATCH /api/messages/[propertyId] - пометить сообщения как прочитанные
-export async function PATCH(
+// POST /api/messages/[propertyId] - отправить сообщение
+export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ propertyId: string }> }
 ) {
@@ -171,58 +177,83 @@ export async function PATCH(
     }
 
     const { propertyId } = await params
+    const body = await request.json()
+    const { content, receiverId } = body
 
-    // Проверяем доступ к чату
-    const [property, tenantRecord] = await Promise.all([
-      prisma.property.findUnique({
-        where: { id: propertyId },
-        select: { id: true, userId: true }
-      }),
-      // Проверяем является ли пользователь арендатором этой квартиры
-      prisma.tenant.findFirst({
-        where: {
-          tenantUserId: authUser.id,
-          propertyId: propertyId,
-          isActive: true,
-        },
-        select: { id: true }
-      })
-    ])
+    if (!content?.trim()) {
+      return NextResponse.json({ error: 'Message content is required' }, { status: 400 })
+    }
+
+    const property = await prisma.property.findUnique({
+      where: { id: propertyId },
+      select: {
+        id: true,
+        userId: true,
+        tenants: {
+          where: { isActive: true },
+          select: { tenantUserId: true }
+        }
+      }
+    })
 
     if (!property) {
-      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
     }
 
     const isOwner = property.userId === authUser.id
-    const isTenantOfProperty = !!tenantRecord
+    const isTenant = property.tenants.some(t => t.tenantUserId === authUser.id)
 
-    if (!isOwner && !isTenantOfProperty) {
-      return NextResponse.json(
-        { error: 'You do not have access to this chat' },
-        { status: 403 }
-      )
+    if (!isOwner && !isTenant) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Помечаем все непрочитанные сообщения адресованные текущему пользователю
-    const updated = await prisma.message.updateMany({
-      where: {
+    let targetReceiverId = receiverId
+    if (!targetReceiverId) {
+      if (isTenant) {
+        targetReceiverId = property.userId
+      } else if (property.tenants.length > 0) {
+        targetReceiverId = property.tenants[0].tenantUserId
+      }
+    }
+
+    if (!targetReceiverId) {
+      return NextResponse.json({ error: 'No recipient available' }, { status: 400 })
+    }
+
+    const message = await prisma.message.create({
+      data: {
         propertyId,
-        receiverId: authUser.id,
+        senderId: authUser.id,
+        receiverId: targetReceiverId,
+        content: content.trim(),
         isRead: false,
       },
-      data: {
+      select: {
+        id: true,
+        content: true,
+        createdAt: true,
         isRead: true,
-        readAt: new Date(),
+        senderId: true,
+        receiverId: true,
+        sender: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          }
+        }
       }
     })
 
     return NextResponse.json({
-      success: true,
-      markedAsRead: updated.count,
-    })
-
+      ...message,
+      sender: {
+        id: message.sender.id,
+        name: [message.sender.firstName, message.sender.lastName].filter(Boolean).join(' ') || 'Пользователь',
+      }
+    }, { status: 201 })
   } catch (error) {
-    console.error('Error marking messages as read:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    console.error('Error sending message:', error)
+    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
   }
 }

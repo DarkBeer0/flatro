@@ -20,7 +20,8 @@ export async function GET() {
           include: {
             user: {
               select: {
-                name: true,
+                firstName: true,
+                lastName: true,
                 email: true,
                 phone: true,
               }
@@ -64,6 +65,11 @@ export async function GET() {
       }
     })
 
+    // Собираем полное имя владельца
+    const ownerName = tenant.property?.user 
+      ? [tenant.property.user.firstName, tenant.property.user.lastName].filter(Boolean).join(' ') || 'Владелец'
+      : 'Владелец'
+
     return NextResponse.json({
       property: tenant.property ? {
         id: tenant.property.id,
@@ -73,7 +79,7 @@ export async function GET() {
         rooms: tenant.property.rooms,
         area: tenant.property.area,
         owner: {
-          name: tenant.property.user.name,
+          name: ownerName,
           email: tenant.property.user.email,
           phone: tenant.property.user.phone,
         }

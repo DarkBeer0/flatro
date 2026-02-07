@@ -105,7 +105,7 @@ export async function GET(
       )
     }
 
-    // Получаем владельца
+    // Получаем владельца - используем firstName/lastName вместо name
     const owner = await prisma.user.findFirst({
       where: {
         properties: {
@@ -113,10 +113,16 @@ export async function GET(
         }
       },
       select: {
-        name: true,
+        firstName: true,
+        lastName: true,
         email: true
       }
     })
+
+    // Собираем полное имя владельца
+    const ownerName = owner 
+      ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Владелец'
+      : 'Владелец'
 
     // Определяем предложенный регион по стране недвижимости
     const suggestedRegion: RegionCode = invitation.property.country 
@@ -128,7 +134,7 @@ export async function GET(
       propertyId: invitation.property.id,
       propertyName: invitation.property.name,
       propertyAddress: `${invitation.property.address}, ${invitation.property.city}`,
-      ownerName: owner?.name || 'Владелец',
+      ownerName,
       ownerEmail: owner?.email,
       expiresAt: invitation.expiresAt.toISOString(),
       suggestedRegion,

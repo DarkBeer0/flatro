@@ -1,423 +1,418 @@
-/**
- * Страница регистрации владельца (owner)
- * 
- * Путь в проекте: app/(auth)/register/page.tsx
- */
-
+// app/invite/[code]/page.tsx
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { createBrowserClient } from '@supabase/ssr'
+import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle, Home, MapPin } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { TermsCheckbox, useTermsValidation } from '@/components/auth/TermsCheckbox'
-import { RegionSelector } from '@/components/ui/RegionSelector'
-import { useRegion, RegionCode } from '@/lib/regions'
-import { Separator } from '@/components/ui/separator'
-import { 
-  Loader2, Mail, Lock, User, Building2, 
-  AlertCircle, Eye, EyeOff, Globe 
-} from 'lucide-react'
+import { PasswordStrength, validatePassword } from '@/components/password-strength'
+import { createClient } from '@/lib/supabase/client'
 
-interface FormData {
-  firstName: string
-  lastName: string
-  email: string
-  password: string
-  confirmPassword: string
-  termsAccepted: boolean
-  privacyAccepted: boolean
+// Интерфейс соответствует формату ответа API /api/invitations/[code]
+interface InvitationData {
+  valid: boolean
+  propertyId: string
+  propertyName: string
+  propertyAddress: string
+  ownerName: string
+  ownerEmail?: string
+  expiresAt: string
+  suggestedRegion?: string
+  invitedEmail: string | null
 }
 
-interface FormErrors {
-  firstName?: string
-  lastName?: string
-  email?: string
-  password?: string
-  confirmPassword?: string
-  terms?: string
-  general?: string
-}
-
-export default function RegisterPage() {
+export default function InvitePage() {
   const router = useRouter()
-  const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-  const { validateTerms } = useTermsValidation()
+  const params = useParams()
+  const code = params.code as string
 
-  // Регион
-  const [regionCode, setRegionCode] = useState<RegionCode>('PL')
-  const { region } = useRegion(regionCode)
+  const [invitation, setInvitation] = useState<InvitationData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [step, setStep] = useState<'loading' | 'register' | 'login' | 'success' | 'error'>('loading')
 
-  const [formData, setFormData] = useState<FormData>({
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    confirmPassword: '',
-    termsAccepted: false,
-    privacyAccepted: false
-  })
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
 
-  const [errors, setErrors] = useState<FormErrors>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  useEffect(() => {
+    fetchInvitation()
+  }, [code])
 
-  // Валидация
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {}
-
-    if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Введите имя'
-    } else if (formData.firstName.length < 2) {
-      newErrors.firstName = 'Имя должно содержать минимум 2 символа'
-    }
-
-    if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Введите фамилию'
-    } else if (formData.lastName.length < 2) {
-      newErrors.lastName = 'Фамилия должна содержать минимум 2 символа'
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!formData.email) {
-      newErrors.email = 'Введите email'
-    } else if (!emailRegex.test(formData.email)) {
-      newErrors.email = 'Введите корректный email'
-    }
-
-    if (!formData.password) {
-      newErrors.password = 'Введите пароль'
-    } else if (formData.password.length < 8) {
-      newErrors.password = 'Пароль должен содержать минимум 8 символов'
-    } else if (!/[A-Z]/.test(formData.password)) {
-      newErrors.password = 'Пароль должен содержать заглавную букву'
-    } else if (!/[0-9]/.test(formData.password)) {
-      newErrors.password = 'Пароль должен содержать цифру'
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Пароли не совпадают'
-    }
-
-    const termsError = validateTerms(formData.termsAccepted, formData.privacyAccepted)
-    if (termsError) {
-      newErrors.terms = termsError
-    }
-
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
-
-  const handleChange = (field: keyof FormData, value: string | boolean) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-    if (errors[field as keyof FormErrors]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }))
-    }
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!validateForm()) return
-
-    setIsSubmitting(true)
-    setErrors({})
-
+  async function fetchInvitation() {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            first_name: formData.firstName.trim(),
-            last_name: formData.lastName.trim(),
-            role: 'owner',
-            region_code: regionCode,
-            terms_accepted_at: new Date().toISOString(),
-            terms_version: '1.0'
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
-      })
+      const res = await fetch(`/api/invitations/${code}`)
+      const data = await res.json()
 
-      if (error) {
-        if (error.message.includes('already registered')) {
-          setErrors({ email: 'Этот email уже зарегистрирован' })
+      if (!res.ok) {
+        // Обработка различных ошибок от API
+        if (data.code === 'NOT_FOUND' || res.status === 404) {
+          setError('Приглашение не найдено')
+        } else if (data.code === 'EXPIRED') {
+          setError('Срок действия приглашения истёк')
+        } else if (data.code === 'ALREADY_USED') {
+          setError('Это приглашение уже использовано')
         } else {
-          setErrors({ general: error.message })
+          setError(data.error || 'Ошибка загрузки приглашения')
         }
+        setStep('error')
         return
       }
 
-      if (data.user) {
-        await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: data.user.id,
-            email: formData.email,
-            firstName: formData.firstName.trim(),
-            lastName: formData.lastName.trim(),
-            regionCode,
-            termsAccepted: formData.termsAccepted,
-            privacyAccepted: formData.privacyAccepted,
-            termsVersion: '1.0'
-          })
-        })
-
-        router.push('/register/confirm?email=' + encodeURIComponent(formData.email))
+      // Проверяем что данные валидны
+      if (!data.propertyName || !data.propertyAddress) {
+        setError('Некорректные данные приглашения')
+        setStep('error')
+        return
       }
 
-    } catch (error) {
-      setErrors({ general: 'Произошла ошибка. Попробуйте ещё раз.' })
+      setInvitation(data)
+      
+      // Устанавливаем email если указан в приглашении
+      if (data.invitedEmail) {
+        setEmail(data.invitedEmail)
+      }
+      
+      // Сохраняем код для использования после подтверждения email
+      localStorage.setItem('pendingInviteCode', code)
+      
+      setStep('register')
+    } catch (err) {
+      console.error('Error fetching invitation:', err)
+      setError('Ошибка соединения')
+      setStep('error')
     } finally {
-      setIsSubmitting(false)
+      setLoading(false)
     }
   }
 
-  const handleGoogleSignUp = async () => {
-    const termsError = validateTerms(formData.termsAccepted, formData.privacyAccepted)
-    if (termsError) {
-      setErrors({ terms: termsError })
+  async function handleRegister(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+
+    const passwordValidation = validatePassword(password)
+    if (!passwordValidation.valid) {
+      setError(passwordValidation.error!)
+      setSubmitting(false)
       return
     }
 
-    setIsSubmitting(true)
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?terms_accepted=true&terms_version=1.0&region=${regionCode}`,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent'
-          }
-        }
-      })
+    if (password !== confirmPassword) {
+      setError('Пароли не совпадают')
+      setSubmitting(false)
+      return
+    }
 
-      if (error) {
-        setErrors({ general: error.message })
+    const supabase = createClient()
+
+    const { data: authData, error: signUpError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name, pendingInviteCode: code },
+        emailRedirectTo: `${window.location.origin}/auth/callback?invite=${code}`,
+      },
+    })
+
+    if (signUpError) {
+      if (signUpError.message.includes('already registered')) {
+        setError('Этот email уже зарегистрирован.')
+        setStep('login')
+      } else {
+        setError(signUpError.message)
       }
-    } catch (error) {
-      setErrors({ general: 'Ошибка при регистрации через Google' })
-    } finally {
-      setIsSubmitting(false)
+      setSubmitting(false)
+      return
+    }
+
+    if (authData.session) {
+      await activateInvitation()
+      return
+    }
+
+    setStep('success')
+    setSubmitting(false)
+  }
+
+  async function handleLogin(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    setError(null)
+
+    const supabase = createClient()
+    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+
+    if (signInError) {
+      setError('Неверный email или пароль')
+      setSubmitting(false)
+      return
+    }
+
+    await activateInvitation()
+  }
+
+  async function activateInvitation() {
+    try {
+      const res = await fetch(`/api/invitations/${code}`, { method: 'POST' })
+
+      if (!res.ok) {
+        const data = await res.json()
+        setError(data.error || 'Ошибка активации')
+        setSubmitting(false)
+        return
+      }
+
+      localStorage.removeItem('pendingInviteCode')
+      router.push('/tenant/dashboard')
+      router.refresh()
+    } catch (err) {
+      setError('Ошибка активации')
+      setSubmitting(false)
     }
   }
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4">
-      <div className="w-full max-w-md">
-        {/* Логотип */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <Building2 className="h-8 w-8 text-blue-600" />
-            <span className="text-2xl font-bold text-gray-900">Flatro</span>
+  // Состояние загрузки
+  if (step === 'loading') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <Card className="p-8 text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
+          <p className="mt-4 text-gray-600">Загрузка приглашения...</p>
+        </Card>
+      </div>
+    )
+  }
+
+  // Состояние ошибки
+  if (step === 'error') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Ошибка</h1>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <Link href="/login">
+            <Button variant="outline" className="w-full">
+              Перейти на страницу входа
+            </Button>
           </Link>
-          <p className="text-gray-600 mt-2">Управление арендой недвижимости</p>
-        </div>
+        </Card>
+      </div>
+    )
+  }
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Создание аккаунта</CardTitle>
-            <CardDescription>
-              Зарегистрируйтесь как владелец недвижимости
-            </CardDescription>
-          </CardHeader>
+  // Успешная отправка письма подтверждения
+  if (step === 'success') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Проверьте почту</h1>
+          <p className="text-gray-600 mb-4">
+            Мы отправили письмо на <strong>{email}</strong>
+          </p>
+          <p className="text-sm text-gray-500">
+            Нажмите на ссылку в письме для завершения регистрации
+          </p>
+        </Card>
+      </div>
+    )
+  }
 
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {errors.general && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{errors.general}</AlertDescription>
-                </Alert>
-              )}
+  // Защита от отсутствия данных приглашения
+  if (!invitation) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-md w-full p-8 text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <h1 className="text-xl font-semibold mb-2">Ошибка</h1>
+          <p className="text-gray-600 mb-6">Не удалось загрузить данные приглашения</p>
+          <Link href="/login">
+            <Button variant="outline" className="w-full">
+              Перейти на страницу входа
+            </Button>
+          </Link>
+        </Card>
+      </div>
+    )
+  }
 
-              {/* Выбор региона */}
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  Страна
-                </Label>
-                <RegionSelector
-                  value={regionCode}
-                  onChange={setRegionCode}
-                />
+  // Основная форма регистрации/входа
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full space-y-4">
+        {/* Информация о квартире */}
+        <Card className="p-6">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <Building2 className="h-6 w-6 text-blue-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg font-semibold text-gray-900 mb-1">
+                Приглашение в квартиру
+              </h1>
+              <div className="flex items-center gap-2 text-gray-600 mb-1">
+                <Home className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{invitation.propertyName}</span>
               </div>
+              <div className="flex items-center gap-2 text-gray-500 text-sm">
+                <MapPin className="h-4 w-4 flex-shrink-0" />
+                <span className="truncate">{invitation.propertyAddress}</span>
+              </div>
+              <p className="text-sm text-gray-500 mt-2">
+                Владелец: {invitation.ownerName || 'Не указан'}
+              </p>
+            </div>
+          </div>
+        </Card>
 
-              {/* Имя и Фамилия */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">Имя</Label>
+        {/* Форма */}
+        <Card className="p-6">
+          {step === 'login' ? (
+            <>
+              <h2 className="text-lg font-semibold mb-4 text-center">Войдите в аккаунт</h2>
+              <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                <div>
+                  <Label>Email</Label>
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="firstName"
-                      placeholder="Иван"
-                      value={formData.firstName}
-                      onChange={(e) => handleChange('firstName', e.target.value)}
-                      className={`pl-10 ${errors.firstName ? 'border-red-500' : ''}`}
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      className="pl-10"
+                      required 
                     />
                   </div>
-                  {errors.firstName && (
-                    <p className="text-red-500 text-sm">{errors.firstName}</p>
-                  )}
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Фамилия</Label>
-                  <Input
-                    id="lastName"
-                    placeholder="Иванов"
-                    value={formData.lastName}
-                    onChange={(e) => handleChange('lastName', e.target.value)}
-                    className={errors.lastName ? 'border-red-500' : ''}
-                  />
-                  {errors.lastName && (
-                    <p className="text-red-500 text-sm">{errors.lastName}</p>
-                  )}
+                <div>
+                  <Label>Пароль</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      className="pl-10"
+                      required 
+                    />
+                  </div>
                 </div>
-              </div>
-
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="ivan@example.com"
-                    value={formData.email}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    className={`pl-10 ${errors.email ? 'border-red-500' : ''}`}
-                  />
-                </div>
-                {errors.email && (
-                  <p className="text-red-500 text-sm">{errors.email}</p>
-                )}
-              </div>
-
-              {/* Пароль */}
-              <div className="space-y-2">
-                <Label htmlFor="password">Пароль</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="Минимум 8 символов"
-                    value={formData.password}
-                    onChange={(e) => handleChange('password', e.target.value)}
-                    className={`pl-10 pr-10 ${errors.password ? 'border-red-500' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errors.password && (
-                  <p className="text-red-500 text-sm">{errors.password}</p>
-                )}
-              </div>
-
-              {/* Подтверждение пароля */}
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Подтвердите пароль</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="confirmPassword"
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Повторите пароль"
-                    value={formData.confirmPassword}
-                    onChange={(e) => handleChange('confirmPassword', e.target.value)}
-                    className={`pl-10 pr-10 ${errors.confirmPassword ? 'border-red-500' : ''}`}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
-                  >
-                    {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {errors.confirmPassword && (
-                  <p className="text-red-500 text-sm">{errors.confirmPassword}</p>
-                )}
-              </div>
-
-              {/* Лицензионное соглашение */}
-              <div className="pt-2">
-                <TermsCheckbox
-                  termsAccepted={formData.termsAccepted}
-                  privacyAccepted={formData.privacyAccepted}
-                  onTermsChange={(checked) => handleChange('termsAccepted', checked)}
-                  onPrivacyChange={(checked) => handleChange('privacyAccepted', checked)}
-                  error={errors.terms}
-                  dataProtectionLaw={region.legal.dataProtectionLaw}
-                />
-              </div>
-
-              <Button type="submit" className="w-full" size="lg" disabled={isSubmitting}>
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Регистрация...
-                  </>
-                ) : (
-                  'Создать аккаунт'
-                )}
-              </Button>
-
-              <div className="relative">
-                <Separator />
-                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white px-2 text-sm text-gray-500">
-                  или
-                </span>
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={handleGoogleSignUp}
-                disabled={isSubmitting}
+                <Button type="submit" className="w-full" disabled={submitting}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Войти и принять'}
+                </Button>
+              </form>
+              <button 
+                onClick={() => { setStep('register'); setError(null) }} 
+                className="w-full mt-4 text-sm text-blue-600 hover:underline"
               >
-                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-                Продолжить с Google
-              </Button>
-            </form>
-          </CardContent>
-
-          <CardFooter className="flex justify-center">
-            <p className="text-sm text-gray-600">
-              Уже есть аккаунт?{' '}
-              <Link href="/login" className="text-blue-600 hover:underline font-medium">
-                Войти
-              </Link>
-            </p>
-          </CardFooter>
+                Создать новый аккаунт
+              </button>
+            </>
+          ) : (
+            <>
+              <h2 className="text-lg font-semibold mb-4 text-center">Создайте аккаунт</h2>
+              <form onSubmit={handleRegister} className="space-y-4">
+                {error && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                <div>
+                  <Label>Ваше имя</Label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      placeholder="Иван Петров" 
+                      value={name} 
+                      onChange={(e) => setName(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Email</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="email" 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                      disabled={!!invitation.invitedEmail}
+                    />
+                  </div>
+                  {invitation.invitedEmail && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Приглашение привязано к этому email
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <Label>Пароль</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="password" 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
+                  </div>
+                  <PasswordStrength password={password} />
+                </div>
+                <div>
+                  <Label>Подтвердите пароль</Label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input 
+                      type="password" 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                      className="pl-10" 
+                      required 
+                    />
+                  </div>
+                </div>
+                <Button type="submit" className="w-full" disabled={submitting}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать аккаунт'}
+                </Button>
+              </form>
+              <button 
+                onClick={() => { setStep('login'); setError(null) }} 
+                className="w-full mt-4 text-sm text-blue-600 hover:underline"
+              >
+                Уже есть аккаунт? Войти
+              </button>
+            </>
+          )}
         </Card>
+
+        {/* Информация о сроке действия */}
+        <p className="text-center text-xs text-gray-500">
+          Приглашение действительно до {new Date(invitation.expiresAt).toLocaleDateString('ru-RU', {
+            day: 'numeric',
+            month: 'long',
+            year: 'numeric'
+          })}
+        </p>
       </div>
     </div>
   )

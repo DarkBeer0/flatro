@@ -15,7 +15,8 @@ export async function getCurrentUser() {
     select: {
       id: true,
       email: true,
-      name: true,
+      firstName: true,
+      lastName: true,
       phone: true,
       isOwner: true,
       isTenant: true,
@@ -30,18 +31,26 @@ export async function getCurrentUser() {
   })
 
   if (!dbUser) {
+    // Разбираем имя из метаданных если есть
+    const fullName = user.user_metadata?.name || ''
+    const nameParts = fullName.split(' ')
+    const firstName = user.user_metadata?.first_name || nameParts[0] || null
+    const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null
+
     dbUser = await prisma.user.create({
       data: {
         id: user.id,
         email: user.email!,
-        name: user.user_metadata?.name || null,
+        firstName,
+        lastName,
         isOwner: false,
         isTenant: false,
       },
       select: {
         id: true,
         email: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         phone: true,
         isOwner: true,
         isTenant: true,
@@ -56,7 +65,11 @@ export async function getCurrentUser() {
     })
   }
 
-  return dbUser
+  // Добавляем вычисляемое поле name для совместимости
+  return {
+    ...dbUser,
+    name: [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || null,
+  }
 }
 
 export async function requireUser() {

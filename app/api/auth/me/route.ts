@@ -18,7 +18,8 @@ export async function GET() {
       select: {
         id: true,
         email: true,
-        name: true,
+        firstName: true,
+        lastName: true,
         phone: true,
         isOwner: true,
         isTenant: true,
@@ -47,10 +48,15 @@ export async function GET() {
     // Вычисляем "основную" роль для совместимости со старым кодом
     const primaryRole = dbUser.isOwner ? 'OWNER' : (dbUser.isTenant ? 'TENANT' : 'OWNER')
 
+    // Собираем полное имя для совместимости
+    const fullName = [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || null
+
     return NextResponse.json({
       id: dbUser.id,
       email: dbUser.email,
-      name: dbUser.name,
+      firstName: dbUser.firstName,
+      lastName: dbUser.lastName,
+      name: fullName, // Для совместимости со старым кодом
       phone: dbUser.phone,
       
       // Новые поля ролей
