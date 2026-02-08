@@ -89,7 +89,7 @@ export default function TenantMessagesPage() {
       return format(date, 'HH:mm')
     }
     if (isYesterday(date)) {
-      return t('common.yesterday') || 'Вчера'
+      return t.common?.yesterday || 'Вчера'
     }
     return format(date, 'd MMM', { locale: ru })
   }
@@ -107,7 +107,7 @@ export default function TenantMessagesPage() {
       <div className="text-center py-12">
         <MessageSquare className="h-12 w-12 mx-auto text-gray-300 mb-4" />
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          {t('common.error') || 'Ошибка'}
+          {t.common?.error || 'Ошибка'}
         </h2>
         <p className="text-gray-500">{error}</p>
       </div>
@@ -120,21 +120,21 @@ export default function TenantMessagesPage() {
       <div className="w-full">
         <div className="mb-6">
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-            {t('messages.title') || 'Сообщения'}
+            {t.messages?.title || 'Сообщения'}
           </h1>
         </div>
         
         <Card className="p-8 text-center">
           <Home className="h-12 w-12 mx-auto text-gray-300 mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            {t('tenant.noProperty') || 'Нет привязанной квартиры'}
+            {t.tenant?.noProperty || 'Нет привязанной квартиры'}
           </h2>
           <p className="text-gray-500 mb-4">
-            {t('tenant.noPropertyDesc') || 'Попросите владельца отправить вам приглашение'}
+            {t.tenant?.noPropertyDesc || 'Попросите владельца отправить вам приглашение'}
           </p>
           <Link href="/tenant/dashboard">
             <button className="text-blue-600 hover:text-blue-700 font-medium">
-              {t('common.backToDashboard') || 'Вернуться на главную'}
+              {t.common?.backToDashboard || 'Вернуться на главную'}
             </button>
           </Link>
         </Card>
@@ -147,10 +147,10 @@ export default function TenantMessagesPage() {
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-          {t('messages.title') || 'Сообщения'}
+          {t.messages?.title || 'Сообщения'}
         </h1>
         <p className="text-gray-500 mt-1">
-          {t('messages.chatWithOwner') || 'Чат с владельцем квартиры'}
+          {t.messages?.chatWithOwner || 'Чат с владельцем квартиры'}
         </p>
       </div>
 
@@ -186,7 +186,7 @@ export default function TenantMessagesPage() {
                 <p className="text-sm text-gray-600 mt-1 truncate">
                   {chat.lastMessage.isOwn && (
                     <span className="text-gray-400">
-                      {t('messages.you') || 'Вы'}: {' '}
+                      {t.messages?.you || 'Вы'}: {' '}
                     </span>
                   )}
                   {chat.lastMessage.content}

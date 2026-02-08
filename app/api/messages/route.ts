@@ -6,7 +6,7 @@
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
-import prisma from '@/lib/prisma'
+import { prisma } from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
 
