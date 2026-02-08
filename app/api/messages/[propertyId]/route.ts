@@ -125,6 +125,27 @@ export async function GET(
     const ownerName = [property.user.firstName, property.user.lastName].filter(Boolean).join(' ') || 'Владелец'
     const userName = [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || 'Пользователь'
 
+    // Определяем собеседника
+    let chatPartner: { id: string; name: string; email?: string } | null = null
+
+    if (isOwner) {
+      // Владелец → собеседник = первый активный tenant
+      const firstTenant = property.tenants[0]
+      if (firstTenant?.tenantUserId) {
+        chatPartner = {
+          id: firstTenant.tenantUserId,
+          name: `${firstTenant.firstName} ${firstTenant.lastName}`.trim() || 'Арендатор',
+        }
+      }
+    } else if (isTenantOfProperty) {
+      // Tenant → собеседник = владелец квартиры
+      chatPartner = {
+        id: property.user.id,
+        name: ownerName,
+        email: property.user.email,
+      }
+    }
+
     return NextResponse.json({
       property: {
         id: property.id,
@@ -154,6 +175,8 @@ export async function GET(
         isOwner,
         isTenantOfProperty,
       },
+      chatPartner,
+      currentUserId: authUser.id,
       hasMore: messages.length === limit,
       nextCursor: messages.length === limit ? messages[messages.length - 1].id : null,
     })
@@ -255,5 +278,39 @@ export async function POST(
   } catch (error) {
     console.error('Error sending message:', error)
     return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+  }
+}
+
+// PATCH /api/messages/[propertyId] - пометить сообщения как прочитанные
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ propertyId: string }> }
+) {
+  try {
+    const supabase = await createClient()
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+
+    if (!authUser) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { propertyId } = await params
+
+    const result = await prisma.message.updateMany({
+      where: {
+        propertyId,
+        receiverId: authUser.id,
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+        readAt: new Date(),
+      }
+    })
+
+    return NextResponse.json({ updated: result.count })
+  } catch (error) {
+    console.error('Error marking messages as read:', error)
+    return NextResponse.json({ error: 'Failed to update messages' }, { status: 500 })
   }
 }

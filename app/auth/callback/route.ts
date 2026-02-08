@@ -15,6 +15,8 @@ type LogEvent =
   | 'invite_activated'
   | 'invite_error'
   | 'invite_critical_error'
+  | 'invite_user_created'
+  | 'invite_auto_completed'
   | 'user_ensured'
   | 'user_creation_error'
   | 'no_roles_fallback'
@@ -68,8 +70,20 @@ async function ensureUserExists(
   return user
 }
 
+// Извлечение имени из Supabase user metadata
+function extractNameFromMetadata(metadata: Record<string, any> | undefined) {
+  if (!metadata) return { firstName: null as string | null, lastName: null as string | null }
+  const nameParts = (metadata.name || '').split(' ')
+  const firstName = metadata.first_name || nameParts[0] || null
+  const lastName = metadata.last_name || nameParts.slice(1).join(' ') || null
+  return { firstName, lastName }
+}
+
 // Функция обработки приглашения
-async function processInvitation(inviteCode: string, user: { id: string; email?: string }) {
+async function processInvitation(
+  inviteCode: string,
+  user: { id: string; email?: string; user_metadata?: Record<string, any> }
+) {
   authLog('invite_processing', { inviteCode, userId: user.id })
 
   // Находим приглашение
@@ -105,7 +119,7 @@ async function processInvitation(inviteCode: string, user: { id: string; email?:
   })
 
   if (existingTenant) {
-    // Уже зарегистрирован - просто помечаем invite как использованный
+    // Уже зарегистрирован — просто помечаем invite как использованный
     await prisma.invitation.update({
       where: { id: invitation.id },
       data: { status: 'ACCEPTED', usedAt: new Date(), usedBy: user.id },
@@ -113,16 +127,91 @@ async function processInvitation(inviteCode: string, user: { id: string; email?:
     return { success: true, redirectPath: '/tenant/dashboard' }
   }
 
-  // Проверяем, нужно ли завершить регистрацию
-  // Если пользователь пришёл через OAuth (Google), нужно перенаправить на форму завершения
-  const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
-  
-  if (!dbUser || !dbUser.termsAcceptedAt) {
-    // Пользователь новый или не завершил регистрацию - отправляем на форму
+  // --- Создаём DB user если его ещё нет (при email-регистрации user есть только в Supabase Auth) ---
+  const { firstName, lastName } = extractNameFromMetadata(user.user_metadata)
+
+  let dbUser = await prisma.user.findUnique({ where: { id: user.id } })
+
+  if (!dbUser) {
+    dbUser = await ensureUserExists(
+      user.id,
+      user.email!,
+      firstName,
+      lastName,
+      { isOwner: false, isTenant: true }
+    )
+    authLog('invite_user_created', { userId: user.id, firstName, lastName })
+  }
+
+  // --- Если пользователь уже указал имя на странице /invite/[code], создаём tenant напрямую ---
+  const hasName = (dbUser.firstName && dbUser.lastName) || (firstName && lastName)
+  const cameFromInvitePage = user.user_metadata?.pendingInviteCode === inviteCode
+
+  if (hasName || cameFromInvitePage) {
+    const now = new Date()
+    const tenantFirstName = dbUser.firstName || firstName || 'Tenant'
+    const tenantLastName = dbUser.lastName || lastName || ''
+
+    await prisma.$transaction(async (tx) => {
+      // Обновляем user: устанавливаем isTenant и terms
+      await tx.user.update({
+        where: { id: user.id },
+        data: {
+          isTenant: true,
+          firstName: dbUser!.firstName || firstName,
+          lastName: dbUser!.lastName || lastName,
+          termsAcceptedAt: dbUser!.termsAcceptedAt || now,
+          privacyAcceptedAt: dbUser!.privacyAcceptedAt || now,
+          termsVersion: dbUser!.termsVersion || '1.0',
+        },
+      })
+
+      // Создаём запись tenant
+      const tenant = await tx.tenant.create({
+        data: {
+          userId: invitation.property.userId,
+          propertyId: invitation.propertyId,
+          tenantUserId: user.id,
+          firstName: tenantFirstName,
+          lastName: tenantLastName,
+          email: user.email!,
+          regionCode: dbUser!.regionCode || 'PL',
+          moveInDate: now,
+          isActive: true,
+          termsAcceptedAt: now,
+          termsVersion: '1.0',
+          registrationCompletedAt: now,
+        },
+      })
+
+      // Обновляем invitation
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'ACCEPTED',
+          usedAt: now,
+          usedBy: user.id,
+          tenantId: tenant.id,
+        },
+      })
+
+      // Обновляем статус недвижимости
+      await tx.property.update({
+        where: { id: invitation.propertyId },
+        data: { status: 'OCCUPIED' },
+      })
+    })
+
+    authLog('invite_auto_completed', { inviteCode, userId: user.id })
+    return { success: true, redirectPath: '/tenant/dashboard' }
+  }
+
+  // Пользователь без имени (например, OAuth без metadata) — отправляем на форму завершения
+  if (!dbUser.termsAcceptedAt) {
     return { success: true, redirectPath: `/invite/complete/${inviteCode}` }
   }
 
-  // Если всё готово, но tenant profile ещё нет - тоже на форму
+  // Если всё готово, но tenant profile ещё нет — тоже на форму
   const existingProfile = await prisma.tenant.findFirst({
     where: { tenantUserId: user.id, propertyId: invitation.propertyId },
   })
@@ -187,6 +276,7 @@ export async function GET(request: NextRequest) {
   // === Invitation Flow ===
   if (inviteCode) {
     try {
+      // Передаём полный объект user с user_metadata
       const result = await processInvitation(inviteCode, user)
       return NextResponse.redirect(getRedirectURL(request, result.redirectPath))
     } catch (err) {
@@ -201,10 +291,7 @@ export async function GET(request: NextRequest) {
 
   // === Standard Registration/Login Flow ===
   try {
-    // Получаем имя из метаданных (поддержка Google OAuth)
-    const nameParts = (user.user_metadata?.name || '').split(' ')
-    const firstName = user.user_metadata?.first_name || nameParts[0] || null
-    const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null
+    const { firstName, lastName } = extractNameFromMetadata(user.user_metadata)
 
     const dbUser = await ensureUserExists(
       user.id,
