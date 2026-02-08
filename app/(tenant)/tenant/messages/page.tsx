@@ -1,11 +1,14 @@
 // app/(tenant)/tenant/messages/page.tsx
+// FIX 1: Поддержка пользователей с обеими ролями
+// Теперь корректно обрабатывает role='both' из API
+
 'use client'
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { format, isToday, isYesterday } from 'date-fns'
 import { ru } from 'date-fns/locale'
-import { Loader2, MessageSquare, Home } from 'lucide-react'
+import { Loader2, MessageSquare, Home, ArrowRight } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { useLocale } from '@/lib/i18n/context'
 
@@ -45,21 +48,29 @@ export default function TenantMessagesPage() {
         
         const data = await res.json()
         
-        if (data.role === 'tenant') {
-          if (data.chat) {
-            setChat(data.chat)
+        // FIX: Обрабатываем role='both' - берём tenantChat
+        if (data.role === 'tenant' || data.role === 'both') {
+          // Для role='both' используем tenantChat, для 'tenant' - chat
+          const tenantChat = data.tenantChat || data.chat
+          
+          if (tenantChat) {
+            setChat(tenantChat)
             setNoProperty(false)
           } else {
-            // Нет привязанной квартиры
             setChat(null)
             setNoProperty(true)
           }
-        } else if (data.role === 'none') {
+        } else if (data.role === 'owner') {
+          // Пользователь только owner, но зашёл на tenant страницу
+          // Это не должно происходить, но обработаем
+          setChat(null)
+          setNoProperty(true)
+        } else {
           setNoProperty(true)
         }
       } catch (err) {
         console.error('Error fetching chats:', err)
-        setError(err instanceof Error ? err.message : 'Ошибка загрузки')
+        setError(err instanceof Error ? err.message : 'Ошибка')
       } finally {
         setLoading(false)
       }
@@ -67,18 +78,18 @@ export default function TenantMessagesPage() {
 
     fetchChats()
     
-    // Polling для обновления списка
+    // Polling для обновления
     const interval = setInterval(fetchChats, 10000)
     return () => clearInterval(interval)
   }, [])
 
-  const formatTime = (dateStr: string) => {
+  function formatMessageDate(dateStr: string) {
     const date = new Date(dateStr)
     if (isToday(date)) {
       return format(date, 'HH:mm')
     }
     if (isYesterday(date)) {
-      return t?.common?.yesterday || 'Вчера'
+      return t('common.yesterday') || 'Вчера'
     }
     return format(date, 'd MMM', { locale: ru })
   }
@@ -86,7 +97,7 @@ export default function TenantMessagesPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
@@ -96,7 +107,7 @@ export default function TenantMessagesPage() {
       <div className="text-center py-12">
         <MessageSquare className="h-12 w-12 mx-auto text-gray-300 mb-4" />
         <h2 className="text-xl font-semibold text-gray-900 mb-2">
-          {t?.common?.error || 'Ошибка'}
+          {t('common.error') || 'Ошибка'}
         </h2>
         <p className="text-gray-500">{error}</p>
       </div>
@@ -109,28 +120,24 @@ export default function TenantMessagesPage() {
       <div className="w-full">
         <div className="mb-6">
           <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-            {t?.nav?.messages || 'Сообщения'}
+            {t('messages.title') || 'Сообщения'}
           </h1>
-          <p className="text-gray-500 mt-1">
-            {t?.messages?.chatWithOwner || 'Общение с владельцем квартиры'}
-          </p>
         </div>
         
-        <div className="text-center py-12">
+        <Card className="p-8 text-center">
           <Home className="h-12 w-12 mx-auto text-gray-300 mb-4" />
           <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            {t?.tenant?.noProperty || 'Нет привязанной квартиры'}
+            {t('tenant.noProperty') || 'Нет привязанной квартиры'}
           </h2>
           <p className="text-gray-500 mb-4">
-            {t?.tenant?.noPropertyDesc || 'Чтобы начать общение с владельцем, вам нужно быть привязанным к квартире'}
+            {t('tenant.noPropertyDesc') || 'Попросите владельца отправить вам приглашение'}
           </p>
-          <Link
-            href="/tenant/dashboard"
-            className="text-green-600 hover:underline"
-          >
-            {t?.common?.backToDashboard || 'Вернуться на главную'}
+          <Link href="/tenant/dashboard">
+            <button className="text-blue-600 hover:text-blue-700 font-medium">
+              {t('common.backToDashboard') || 'Вернуться на главную'}
+            </button>
           </Link>
-        </div>
+        </Card>
       </div>
     )
   }
@@ -140,72 +147,65 @@ export default function TenantMessagesPage() {
       {/* Page Header */}
       <div className="mb-6">
         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-          {t?.nav?.messages || 'Сообщения'}
+          {t('messages.title') || 'Сообщения'}
         </h1>
         <p className="text-gray-500 mt-1">
-          {chat.unreadCount > 0 ? (
-            <span className="text-green-600 font-medium">
-              {chat.unreadCount} {t?.messages?.unread || 'непрочитанных'}
-            </span>
-          ) : (
-            t?.messages?.chatWithOwner || 'Общение с владельцем квартиры'
-          )}
+          {t('messages.chatWithOwner') || 'Чат с владельцем квартиры'}
         </p>
       </div>
 
-      {/* Chat Card */}
-      <Card className="overflow-hidden">
-        <Link
-          href={`/tenant/messages/${chat.propertyId}`}
-          className={`flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors ${
-            chat.unreadCount > 0 ? 'bg-green-50/50' : ''
-          }`}
-        >
-          {/* Avatar */}
-          <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-            <Home className="h-6 w-6 text-green-600" />
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className={`font-medium truncate ${chat.unreadCount > 0 ? 'text-gray-900' : 'text-gray-700'}`}>
-                {chat.propertyName}
-              </h3>
-              {chat.lastMessage && (
-                <span className="text-xs text-gray-500 flex-shrink-0">
-                  {formatTime(chat.lastMessage.createdAt)}
-                </span>
-              )}
-            </div>
-            
-            <p className="text-sm text-gray-500 truncate">
-              {chat.owner.name}
-            </p>
-            
-            {chat.lastMessage && (
-              <p className={`text-sm truncate mt-1 ${chat.unreadCount > 0 ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-                {chat.lastMessage.isOwn && <span className="text-gray-400">{t?.messages?.you || 'Вы'}: </span>}
-                {chat.lastMessage.content}
-              </p>
-            )}
-          </div>
-
-          {/* Unread badge */}
-          {chat.unreadCount > 0 && (
-            <div className="flex-shrink-0 w-6 h-6 bg-green-600 rounded-full flex items-center justify-center">
-              <span className="text-xs text-white font-medium">
-                {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+      {/* Единственный чат с владельцем */}
+      <Link href={`/tenant/messages/${chat.propertyId}`}>
+        <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+          <div className="flex items-start gap-4">
+            {/* Avatar */}
+            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <span className="text-blue-600 font-semibold text-lg">
+                {chat.owner.name.charAt(0).toUpperCase()}
               </span>
             </div>
-          )}
-        </Link>
-      </Card>
 
-      {/* Tip */}
-      <p className="text-xs text-gray-400 text-center mt-4">
-        {t?.messages?.clickToChat || 'Нажмите, чтобы открыть чат'}
-      </p>
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-gray-900 truncate">
+                  {chat.owner.name}
+                </h3>
+                {chat.lastMessage && (
+                  <span className="text-sm text-gray-500 flex-shrink-0">
+                    {formatMessageDate(chat.lastMessage.createdAt)}
+                  </span>
+                )}
+              </div>
+              
+              <p className="text-sm text-gray-500 truncate">
+                {chat.propertyName} • {chat.propertyAddress}
+              </p>
+
+              {chat.lastMessage && (
+                <p className="text-sm text-gray-600 mt-1 truncate">
+                  {chat.lastMessage.isOwn && (
+                    <span className="text-gray-400">
+                      {t('messages.you') || 'Вы'}: {' '}
+                    </span>
+                  )}
+                  {chat.lastMessage.content}
+                </p>
+              )}
+            </div>
+
+            {/* Unread badge + Arrow */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {chat.unreadCount > 0 && (
+                <span className="bg-blue-600 text-white text-xs font-medium px-2 py-1 rounded-full">
+                  {chat.unreadCount}
+                </span>
+              )}
+              <ArrowRight className="h-5 w-5 text-gray-400" />
+            </div>
+          </div>
+        </Card>
+      </Link>
     </div>
   )
 }

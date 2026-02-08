@@ -1,33 +1,44 @@
 /**
  * Страница политики конфиденциальности
  * 
+ * FIX 3: Кнопка "Назад" теперь использует router.back()
+ * вместо жёсткой ссылки на главную страницу
+ * 
  * Путь в проекте: app/(legal)/privacy/page.tsx
  */
 
-import { Metadata } from 'next'
+'use client'
+
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export const metadata: Metadata = {
-  title: 'Политика конфиденциальности | Flatro',
-  description: 'Политика конфиденциальности и обработки персональных данных сервиса Flatro'
-}
-
 export default function PrivacyPolicyPage() {
+  const router = useRouter()
   const version = '1.0'
   const lastUpdated = '1 января 2025'
+
+  // FIX 3: Навигация назад
+  function handleBack() {
+    // Проверяем, есть ли история для возврата
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+    } else {
+      // Если истории нет - на главную
+      router.push('/')
+    }
+  }
 
   return (
     <div className="min-h-screen bg-white">
       <header className="border-b sticky top-0 bg-white z-10">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Назад
-            </Button>
-          </Link>
+          {/* FIX 3: Кнопка с router.back() */}
+          <Button variant="ghost" size="sm" onClick={handleBack}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Назад
+          </Button>
           <span className="text-sm text-gray-500">
             Версия {version} от {lastUpdated}
           </span>
