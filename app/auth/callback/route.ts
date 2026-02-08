@@ -1,247 +1,178 @@
 // app/auth/callback/route.ts
-import { createClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 
-// === VERCEL CONFIGURATION ===
-export const runtime = 'nodejs'
-export const maxDuration = 60
+// Типы для логирования
+type LogEvent =
+  | 'callback_start'
+  | 'missing_code'
+  | 'code_exchange_failed'
+  | 'code_exchange_success'
+  | 'invite_processing'
+  | 'invite_activated'
+  | 'invite_error'
+  | 'invite_critical_error'
+  | 'user_ensured'
+  | 'user_creation_error'
+  | 'no_roles_fallback'
 
-// === STRUCTURED LOGGING ===
-function authLog(event: string, data: Record<string, unknown> = {}) {
-  const logData = {
-    timestamp: new Date().toISOString(),
-    service: 'auth-callback',
-    event,
-    ...data,
-    ...(typeof data.email === 'string'
-      ? { email: data.email.replace(/(.{2}).*@/, '$1***@') }
-      : {}),
-  }
-  console.log(JSON.stringify(logData))
+function authLog(event: LogEvent, data?: Record<string, unknown>) {
+  console.log(`[Auth Callback] ${event}`, data ? JSON.stringify(data) : '')
 }
 
-// === ERROR MAPPING ===
-const ERROR_MESSAGES: Record<string, string> = {
-  'invalid_grant': 'Ссылка устарела. Запросите новую.',
-  'otp_expired': 'Ссылка истекла. Запросите новую.',
-  'email_not_confirmed': 'Email не подтверждён.',
-  'user_not_found': 'Пользователь не найден.',
-  'invalid_credentials': 'Неверные данные для входа.',
-}
-
-function getErrorMessage(error: { code?: string; message?: string }): string {
-  if (error.code && ERROR_MESSAGES[error.code]) {
-    return ERROR_MESSAGES[error.code]
-  }
-  return error.message || 'Ошибка авторизации'
-}
-
-// === PRODUCTION REDIRECT HELPER ===
-function getRedirectURL(request: Request, path: string): string {
-  const { origin } = new URL(request.url)
-  const forwardedHost = request.headers.get('x-forwarded-host')
-  const forwardedProto = request.headers.get('x-forwarded-proto') || 'https'
-  
-  if (forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}${path}`
-  }
-  
+// Утилита для получения redirect URL
+function getRedirectURL(request: NextRequest, path: string) {
+  const origin = request.nextUrl.origin
   return `${origin}${path}`
 }
 
-// === IDEMPOTENT USER CREATION ===
+// Утилита для получения понятного сообщения об ошибке
+function getErrorMessage(error: unknown): string {
+  if (!error) return 'Неизвестная ошибка'
+  if (typeof error === 'string') return error
+  if (error instanceof Error) return error.message
+  return 'Ошибка авторизации'
+}
+
+// Функция для создания или получения пользователя
 async function ensureUserExists(
-  userId: string, 
-  email: string, 
+  userId: string,
+  email: string,
   firstName: string | null,
   lastName: string | null,
   roles: { isOwner: boolean; isTenant: boolean }
 ) {
-  return prisma.user.upsert({
-    where: { id: userId },
-    create: {
-      id: userId,
-      email,
-      firstName,
-      lastName,
-      isOwner: roles.isOwner,
-      isTenant: roles.isTenant,
-    },
-    update: {
-      email,
-      ...(roles.isOwner && { isOwner: true }),
-      ...(roles.isTenant && { isTenant: true }),
-    },
-  })
+  // Пробуем найти существующего
+  let user = await prisma.user.findUnique({ where: { id: userId } })
+
+  if (!user) {
+    // Создаём нового
+    user = await prisma.user.create({
+      data: {
+        id: userId,
+        email,
+        firstName,
+        lastName,
+        isOwner: roles.isOwner,
+        isTenant: roles.isTenant,
+        termsAcceptedAt: new Date(),
+        privacyAcceptedAt: new Date(),
+        termsVersion: '1.0',
+      },
+    })
+  }
+
+  return user
 }
 
-// === IDEMPOTENT INVITATION PROCESSING ===
-async function processInvitation(
-  inviteCode: string,
-  user: { id: string; email?: string; user_metadata?: { first_name?: string; last_name?: string; name?: string } }
-): Promise<{ success: boolean; redirectPath: string; error?: string }> {
-  
-  authLog('invite_processing_start', { inviteCode, userId: user.id })
+// Функция обработки приглашения
+async function processInvitation(inviteCode: string, user: { id: string; email?: string }) {
+  authLog('invite_processing', { inviteCode, userId: user.id })
 
-  const invitation = await prisma.invitation.findUnique({
-    where: { code: inviteCode },
-    include: { property: true },
+  // Находим приглашение
+  const invitation = await prisma.invitation.findFirst({
+    where: {
+      code: inviteCode,
+      status: 'PENDING',
+      expiresAt: { gt: new Date() },
+    },
+    include: {
+      property: {
+        select: { id: true, userId: true },
+      },
+    },
   })
 
   if (!invitation) {
-    authLog('invite_not_found', { inviteCode })
-    return { success: false, redirectPath: '/login?error=invite_not_found', error: 'Приглашение не найдено' }
+    return { success: false, redirectPath: '/login?error=invite_invalid' }
   }
 
-  if (invitation.usedAt) {
-    authLog('invite_already_used', { inviteCode, usedBy: invitation.usedBy })
-    if (invitation.usedBy === user.id) {
-      const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
-      return { 
-        success: true, 
-        redirectPath: dbUser?.isOwner ? '/dashboard' : '/tenant/dashboard' 
-      }
-    }
-    return { success: false, redirectPath: '/login?error=invite_used', error: 'Приглашение уже использовано' }
-  }
-
-  if (new Date() > invitation.expiresAt) {
-    authLog('invite_expired', { inviteCode, expiresAt: invitation.expiresAt })
-    return { success: false, redirectPath: '/login?error=invite_expired', error: 'Приглашение истекло' }
-  }
-
+  // Проверка: нельзя быть жильцом своей квартиры
   if (invitation.property.userId === user.id) {
-    authLog('invite_self_error', { inviteCode, userId: user.id })
-    return { success: false, redirectPath: '/dashboard?error=cannot_invite_self', error: 'Нельзя пригласить себя' }
+    return { success: false, redirectPath: '/login?error=cannot_invite_self' }
   }
 
-  try {
-    await prisma.$transaction(async (tx) => {
-      // Получаем имя из метаданных
-      const nameParts = (user.user_metadata?.name || '').split(' ')
-      const firstName = user.user_metadata?.first_name || nameParts[0] || null
-      const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null
+  // Проверяем, зарегистрирован ли уже как tenant для этой квартиры
+  const existingTenant = await prisma.tenant.findFirst({
+    where: {
+      tenantUserId: user.id,
+      propertyId: invitation.propertyId,
+      isActive: true,
+    },
+  })
 
-      // 1. Ensure user exists с ролью tenant
-      await tx.user.upsert({
-        where: { id: user.id },
-        create: {
-          id: user.id,
-          email: user.email!,
-          firstName,
-          lastName,
-          isOwner: false,
-          isTenant: true,
-        },
-        update: {
-          email: user.email!,
-          isTenant: true,
-        },
-      })
-
-      // 2. Ensure tenant record exists
-      const existingTenant = await tx.tenant.findFirst({
-        where: { tenantUserId: user.id, propertyId: invitation.propertyId },
-      })
-
-      if (!existingTenant) {
-        await tx.tenant.create({
-          data: {
-            userId: invitation.property.userId,
-            propertyId: invitation.propertyId,
-            tenantUserId: user.id,
-            firstName: firstName || 'Имя',
-            lastName: lastName || 'Фамилия',
-            email: user.email,
-            isActive: true,
-            moveInDate: new Date(),
-          },
-        })
-
-        // 3. Update property status
-        await tx.property.update({
-          where: { id: invitation.propertyId },
-          data: { status: 'OCCUPIED' },
-        })
-      }
-
-      // 4. Mark invitation as used
-      await tx.invitation.update({
-        where: { id: invitation.id },
-        data: {
-          usedAt: new Date(),
-          usedBy: user.id,
-        },
-      })
-    }, {
-      timeout: 10000,
+  if (existingTenant) {
+    // Уже зарегистрирован - просто помечаем invite как использованный
+    await prisma.invitation.update({
+      where: { id: invitation.id },
+      data: { status: 'ACCEPTED', usedAt: new Date(), usedBy: user.id },
     })
-
-    authLog('invite_processed_success', { inviteCode, userId: user.id })
-
-    const finalUser = await prisma.user.findUnique({ where: { id: user.id } })
-    
-    if (finalUser?.isOwner) {
-      return { success: true, redirectPath: '/dashboard?invite_accepted=true' }
-    }
     return { success: true, redirectPath: '/tenant/dashboard' }
-
-  } catch (error) {
-    authLog('invite_processing_error', { 
-      inviteCode, 
-      userId: user.id, 
-      error: error instanceof Error ? error.message : 'Unknown error',
-    })
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      authLog('invite_race_condition_handled', { inviteCode })
-      const finalUser = await prisma.user.findUnique({ where: { id: user.id } })
-      return { 
-        success: true, 
-        redirectPath: finalUser?.isOwner ? '/dashboard' : '/tenant/dashboard' 
-      }
-    }
-
-    throw error
   }
+
+  // Проверяем, нужно ли завершить регистрацию
+  // Если пользователь пришёл через OAuth (Google), нужно перенаправить на форму завершения
+  const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
+  
+  if (!dbUser || !dbUser.termsAcceptedAt) {
+    // Пользователь новый или не завершил регистрацию - отправляем на форму
+    return { success: true, redirectPath: `/invite/complete/${inviteCode}` }
+  }
+
+  // Если всё готово, но tenant profile ещё нет - тоже на форму
+  const existingProfile = await prisma.tenant.findFirst({
+    where: { tenantUserId: user.id, propertyId: invitation.propertyId },
+  })
+
+  if (!existingProfile) {
+    return { success: true, redirectPath: `/invite/complete/${inviteCode}` }
+  }
+
+  authLog('invite_activated', { inviteCode, userId: user.id })
+  return { success: true, redirectPath: '/tenant/dashboard' }
 }
 
-// === MAIN HANDLER ===
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const inviteCode = searchParams.get('invite')
-  const next = searchParams.get('next')
-  const errorParam = searchParams.get('error')
-  const errorDescription = searchParams.get('error_description')
 
-  authLog('callback_start', { 
-    hasCode: !!code, 
-    hasInvite: !!inviteCode,
-    hasNext: !!next,
-    hasError: !!errorParam 
-  })
+  authLog('callback_start', { hasCode: !!code, inviteCode })
 
-  // === Handle Error from Supabase ===
-  if (errorParam) {
-    const errorMsg = ERROR_MESSAGES[errorParam] || errorDescription || errorParam
-    authLog('supabase_error', { error: errorParam, description: errorDescription })
-    return NextResponse.redirect(getRedirectURL(request, `/login?error=${encodeURIComponent(errorMsg)}`))
-  }
-
-  // === No Code = Direct Access ===
   if (!code) {
-    authLog('no_code_redirect')
-    return NextResponse.redirect(getRedirectURL(request, '/login'))
+    authLog('missing_code', {})
+    return NextResponse.redirect(getRedirectURL(request, '/login?error=missing_code'))
   }
 
-  // === Exchange Code for Session ===
-  const supabase = await createClient()
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            )
+          } catch {
+            // Игнорируем ошибки в Server Components
+          }
+        },
+      },
+    }
+  )
+
+  // Обмен кода на сессию
   const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
-  if (exchangeError || !data.user) {
+  if (exchangeError || !data?.user) {
     const errorMsg = exchangeError ? getErrorMessage(exchangeError) : 'Ошибка авторизации'
     authLog('code_exchange_failed', { 
       error: exchangeError?.message,
@@ -264,12 +195,13 @@ export async function GET(request: Request) {
         userId: user.id,
         error: err instanceof Error ? err.message : 'Unknown',
       })
+      // При ошибке продолжаем стандартный flow
     }
   }
 
   // === Standard Registration/Login Flow ===
   try {
-    // Получаем имя из метаданных
+    // Получаем имя из метаданных (поддержка Google OAuth)
     const nameParts = (user.user_metadata?.name || '').split(' ')
     const firstName = user.user_metadata?.first_name || nameParts[0] || null
     const lastName = user.user_metadata?.last_name || nameParts.slice(1).join(' ') || null

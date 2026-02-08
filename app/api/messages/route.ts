@@ -19,7 +19,9 @@ export async function GET() {
         id: true,
         isOwner: true,
         isTenant: true,
+        // ИСПРАВЛЕНИЕ: добавлен where: { isActive: true } для фильтрации только активных профилей
         tenantProfile: {
+          where: { isActive: true },
           select: {
             id: true,
             propertyId: true,
@@ -123,10 +125,35 @@ export async function GET() {
     }
 
     // Для арендатора
-    if (dbUser.isTenant && dbUser.tenantProfile) {
-      const tenantProfile = dbUser.tenantProfile
+    if (dbUser.isTenant) {
+      // ИСПРАВЛЕНИЕ: Используем явный запрос к Tenant вместо relation
+      // Это гарантирует, что мы получим активный профиль с property
+      const tenantProfile = await prisma.tenant.findFirst({
+        where: {
+          tenantUserId: authUser.id,
+          isActive: true,
+        },
+        include: {
+          property: {
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              userId: true,
+              user: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                  email: true,
+                }
+              }
+            }
+          }
+        }
+      })
       
-      if (!tenantProfile.property) {
+      if (!tenantProfile || !tenantProfile.property) {
         return NextResponse.json({
           role: 'tenant',
           chat: null,
