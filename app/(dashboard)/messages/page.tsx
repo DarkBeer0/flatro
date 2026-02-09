@@ -86,7 +86,7 @@ export default function MessagesPage() {
 
   // Фильтруем чаты только с арендаторами, у которых есть аккаунт
   const activeChats = chats.filter(chat => 
-    chat.tenants.some(t => t.userId)
+    chat.tenants.some(t => (t as any).userId || (t as any).tenantUserId)
   )
 
   return (

@@ -116,13 +116,14 @@ export async function GET() {
             tenants: property.tenants.map(t => ({
               id: t.id,
               name: `${t.firstName} ${t.lastName}`.trim(),
-              tenantUserId: t.tenantUserId,
+              userId: t.tenantUserId,
             })),
             lastMessage: lastMessage ? {
               id: lastMessage.id,
               content: lastMessage.content.substring(0, 100),
               createdAt: lastMessage.createdAt,
-              isOwn: lastMessage.senderId === authUser.id,
+              isFromMe: lastMessage.senderId === authUser.id,
+              isRead: true,
             } : null,
             unreadCount,
           }

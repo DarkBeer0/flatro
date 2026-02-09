@@ -33,7 +33,8 @@ export function MessageInput({
 
     // Сразу очищаем поле
     setMessage('')
-    
+    // Возвращаем фокус в поле ввода
+    textareaRef.current?.focus()
     // Отправляем в фоне (fire and forget)
     Promise.resolve(onSend(trimmed)).catch((err) => {
       console.error('Failed to send message:', err)
