@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: Contracts V2 — расширенные договоры, вложения, польские требования
+// Обновлено: Contracts V3 — история статусов, подписи двумя сторонами, PDF
 
 generator client {
   provider = "prisma-client-js"
@@ -198,7 +198,7 @@ model Tenant {
   @@map("tenants")
 }
 
-// ============== ДОГОВОРЫ (Contracts V2) ==============
+// ============== ДОГОВОРЫ (Contracts V3) ==============
 
 model Contract {
   id         String       @id @default(uuid())
@@ -211,7 +211,7 @@ model Contract {
   // Финансы: czynsz + opłaty + media
   rentAmount       Float                          // Czynsz najmu
   adminFee         Float          @default(0)     // Czynsz administracyjny
-  utilitiesAdvance Float          @default(0)     // Zaliczka na media
+  utilitiesAdvance Float          @default(0)     // Zaliczka на media
   depositAmount    Float?
   paymentDay       Int            @default(10)    // 1-28
 
@@ -220,6 +220,14 @@ model Contract {
   signedAt       DateTime?
   signedByTenant Boolean        @default(false)
   signedByOwner  Boolean        @default(false)
+
+  // V3: Таймстемпы подписей каждой стороны
+  ownerSignedAt  DateTime? @map("owner_signed_at")
+  tenantSignedAt DateTime? @map("tenant_signed_at")
+
+  // V3: Отслеживание изменений статуса
+  statusUpdatedAt DateTime? @default(now()) @map("status_updated_at")
+  statusUpdatedBy String?   @map("status_updated_by")
 
   // Источник: форма или загруженный PDF
   contractSource  String @default("FORM")         // "FORM" | "UPLOAD"
@@ -240,16 +248,37 @@ model Contract {
   updatedAt DateTime @updatedAt
 
   // Связи
-  property    Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  attachments ContractAttachment[]
+  property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  attachments   ContractAttachment[]
+  statusHistory ContractStatusHistory[]
 
   // Индексы
   @@index([status, endDate])
   @@index([propertyId, status])
+  @@index([tenantId])
   @@index([country])
   @@index([contractSource])
   @@map("contracts")
+}
+
+// V3: История изменений статуса договора
+model ContractStatusHistory {
+  id         String   @id @default(uuid())
+  contractId String   @map("contract_id")
+  oldStatus  String?  @map("old_status")
+  newStatus  String   @map("new_status")
+  changedBy  String   @map("changed_by")
+  changedAt  DateTime @default(now()) @map("changed_at")
+  reason     String?
+
+  // Связи
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  // Индексы
+  @@index([contractId, changedAt(sort: Desc)])
+  @@index([changedBy])
+  @@map("contract_status_history")
 }
 
 model ContractAttachment {
