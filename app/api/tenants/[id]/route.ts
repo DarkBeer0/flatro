@@ -23,7 +23,25 @@ export async function GET(
         id,
         userId: user.id, // Только арендаторы текущего владельца
       },
-      include: {
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        nationalId: true,
+        nationalIdType: true,
+        pesel: true,
+        regionCode: true,
+        emergencyContact: true,
+        emergencyPhone: true,
+        moveInDate: true,
+        moveOutDate: true,
+        isActive: true,
+        tenantUserId: true,
+        termsAcceptedAt: true,
+        registrationCompletedAt: true,
+        createdAt: true,
         property: {
           select: {
             id: true,
@@ -39,6 +57,8 @@ export async function GET(
             startDate: true,
             endDate: true,
             rentAmount: true,
+            depositAmount: true,
+            paymentDay: true,
             status: true,
           },
           orderBy: { startDate: 'desc' },
@@ -70,7 +90,7 @@ export async function GET(
   }
 }
 
-// DELETE — удалить арендатора
+// DELETE — удалить арендатора (soft delete)
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
