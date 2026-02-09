@@ -1,5 +1,4 @@
 // app/api/contracts/upload/route.ts
-// REPLACE existing file — fixes bucket 404 error
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuidv4 } from 'uuid'
@@ -7,50 +6,8 @@ import { v4 as uuidv4 } from 'uuid'
 const BUCKET = 'contracts'
 const MAX_FILE_SIZE = 10 * 1024 * 1024 // 10 MB
 
-/**
- * Ensures the storage bucket exists. Creates it if missing.
- * Uses service role or catches "already exists" gracefully.
- */
-async function ensureBucket(supabase: any): Promise<{ ok: boolean; error?: string }> {
-  // First, try to list the bucket to see if it exists
-  const { data: buckets, error: listError } = await supabase.storage.listBuckets()
-
-  if (listError) {
-    console.error('Error listing buckets:', listError)
-    // Don't fail — try creating anyway
-  }
-
-  const exists = buckets?.some((b: any) => b.name === BUCKET)
-
-  if (exists) return { ok: true }
-
-  // Bucket doesn't exist — try to create it
-  const { error: createError } = await supabase.storage.createBucket(BUCKET, {
-    public: false,
-    fileSizeLimit: MAX_FILE_SIZE,
-    allowedMimeTypes: ['application/pdf', 'image/jpeg', 'image/png'],
-  })
-
-  if (createError) {
-    // "already exists" is fine (race condition)
-    if (createError.message?.includes('already exists')) {
-      return { ok: true }
-    }
-
-    // Bucket creation requires service_role key or admin access
-    // If using anon key, bucket must be created manually in Supabase Dashboard
-    console.error('Cannot create bucket:', createError)
-    return {
-      ok: false,
-      error:
-        'Storage bucket "contracts" does not exist. ' +
-        'Please create it in Supabase Dashboard → Storage → New Bucket (name: "contracts", private). ' +
-        'Error: ' + createError.message,
-    }
-  }
-
-  return { ok: true }
-}
+// Bucket "contracts" must exist in Supabase Dashboard → Storage
+// Created manually (anon key cannot list/create buckets due to RLS)
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,15 +16,6 @@ export async function POST(request: NextRequest) {
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    // Ensure bucket exists
-    const bucketCheck = await ensureBucket(supabase)
-    if (!bucketCheck.ok) {
-      return NextResponse.json(
-        { error: bucketCheck.error, code: 'BUCKET_NOT_FOUND' },
-        { status: 500 }
-      )
     }
 
     const formData = await request.formData()
@@ -87,6 +35,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate non-empty
+    if (file.size === 0) {
+      return NextResponse.json(
+        { error: 'File is empty (0 bytes)' },
+        { status: 400 }
+      )
+    }
+
     // Validate file type
     const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png']
     if (!allowedTypes.includes(file.type)) {
@@ -97,15 +53,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate unique file path
-    const ext = file.name.split('.').pop() || 'pdf'
     const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
     const filePath = `${user.id}/${contractId || 'temp'}/${uuidv4()}_${sanitizedName}`
 
-    // Upload to Supabase Storage
-    const buffer = Buffer.from(await file.arrayBuffer())
+    // Upload to Supabase Storage using Uint8Array (Buffer can corrupt binary data)
+    const arrayBuffer = await file.arrayBuffer()
+    const uint8Array = new Uint8Array(arrayBuffer)
+
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(BUCKET)
-      .upload(filePath, buffer, {
+      .upload(filePath, uint8Array, {
         contentType: file.type,
         upsert: false,
       })
@@ -113,12 +70,10 @@ export async function POST(request: NextRequest) {
     if (uploadError) {
       console.error('Supabase upload error:', uploadError)
 
-      // Provide helpful error messages
       if (uploadError.message?.includes('Bucket not found')) {
         return NextResponse.json(
           {
-            error:
-              'Storage bucket "contracts" not found. Please create it in Supabase Dashboard → Storage.',
+            error: 'Storage bucket "contracts" not found. Please create it in Supabase Dashboard → Storage.',
             code: 'BUCKET_NOT_FOUND',
           },
           { status: 500 }
@@ -131,26 +86,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get signed URL (for private bucket) or public URL
-    // For private bucket, use createSignedUrl; for public, use getPublicUrl
-    let fileUrl: string
-
-    const { data: signedData, error: signedError } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrl(filePath, 60 * 60 * 24 * 365) // 1 year
-
-    if (signedError || !signedData?.signedUrl) {
-      // Fallback to public URL
-      const { data: urlData } = supabase.storage
-        .from(BUCKET)
-        .getPublicUrl(filePath)
-      fileUrl = urlData.publicUrl
-    } else {
-      fileUrl = signedData.signedUrl
-    }
-
+    // Return the PATH (not signed URL) — URL is generated on-demand via download route
+    // contractFileUrl in DB stores the storage path
     return NextResponse.json({
-      url: fileUrl,
+      url: filePath,
       path: filePath,
       fileName: file.name,
       fileSize: file.size,

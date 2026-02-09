@@ -78,6 +78,7 @@ export default function ContractDetailPage() {
   const [showRollback, setShowRollback] = useState(false)
   const [generatingPdf, setGeneratingPdf] = useState(false)
   const [uploadingPdf, setUploadingPdf] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [bucketError, setBucketError] = useState<string | null>(null)
 
   const loadContract = useCallback(async () => {
@@ -98,6 +99,35 @@ export default function ContractDetailPage() {
   useEffect(() => {
     loadContract()
   }, [loadContract])
+
+  // Download PDF via signed URL (contractFileUrl stores path OR legacy full URL)
+  async function handleDownloadPdf() {
+    if (!contract?.contractFileUrl) return
+
+    // Legacy: if it's already a full URL, open directly
+    if (contract.contractFileUrl.startsWith('http')) {
+      window.open(contract.contractFileUrl, '_blank')
+      return
+    }
+
+    // New: it's a storage path — get fresh signed URL
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(
+        `/api/contracts/download?path=${encodeURIComponent(contract.contractFileUrl)}&contractId=${contract.id}`
+      )
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.open(data.url, '_blank')
+      } else {
+        alert(data.error || 'Błąd pobierania pliku')
+      }
+    } catch {
+      alert('Błąd połączenia')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   // Status change
   async function handleStatusChange(newStatus: string, reason?: string) {
@@ -287,12 +317,10 @@ export default function ContractDetailPage() {
               {cStatus.label}
             </Badge>
             {contract.contractFileUrl && (
-              <a href={contract.contractFileUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  PDF
-                </Button>
-              </a>
+              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                {downloadingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                PDF
+              </Button>
             )}
           </div>
         </div>
@@ -518,12 +546,10 @@ export default function ContractDetailPage() {
           </label>
 
           {contract.contractFileUrl && (
-            <a href={contract.contractFileUrl} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" variant="outline">
-                <Download className="h-4 w-4 mr-2" />
-                Pobierz PDF
-              </Button>
-            </a>
+            <Button size="sm" variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+              {downloadingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              Pobierz PDF
+            </Button>
           )}
         </div>
       </Card>
@@ -712,11 +738,18 @@ export default function ContractDetailPage() {
                   )}
                 </div>
                 {att.fileUrl && (
-                  <a href={att.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm">
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </a>
+                  <Button variant="ghost" size="sm" onClick={async () => {
+                    if (att.fileUrl.startsWith('http')) {
+                      window.open(att.fileUrl, '_blank')
+                    } else {
+                      const res = await fetch(`/api/contracts/download?path=${encodeURIComponent(att.fileUrl)}&contractId=${contract.id}`)
+                      const data = await res.json()
+                      if (data.url) window.open(data.url, '_blank')
+                      else alert(data.error || 'Błąd pobierania')
+                    }
+                  }}>
+                    <Download className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
             ))}

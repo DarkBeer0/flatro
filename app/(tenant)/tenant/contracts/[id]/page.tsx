@@ -47,6 +47,7 @@ export default function TenantContractDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [signing, setSigning] = useState(false)
   const [signSuccess, setSignSuccess] = useState(false)
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
 
   const loadContract = useCallback(async () => {
     try {
@@ -66,6 +67,35 @@ export default function TenantContractDetailPage() {
   useEffect(() => {
     loadContract()
   }, [loadContract])
+
+  // Download PDF via fresh signed URL
+  async function handleDownloadPdf() {
+    if (!contract?.contractFileUrl) return
+
+    // Legacy: if it's already a full URL, open directly
+    if (contract.contractFileUrl.startsWith('http')) {
+      window.open(contract.contractFileUrl, '_blank')
+      return
+    }
+
+    // New: it's a storage path — get fresh signed URL
+    setDownloadingPdf(true)
+    try {
+      const res = await fetch(
+        `/api/contracts/download?path=${encodeURIComponent(contract.contractFileUrl)}&contractId=${contract.id}`
+      )
+      const data = await res.json()
+      if (res.ok && data.url) {
+        window.open(data.url, '_blank')
+      } else {
+        alert(data.error || 'Błąd pobierania pliku')
+      }
+    } catch {
+      alert('Błąd połączenia')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
 
   async function handleSign() {
     if (!contract || signing) return
@@ -173,12 +203,10 @@ export default function TenantContractDetailPage() {
               {statusCfg.label}
             </Badge>
             {contract.contractFileUrl && (
-              <a href={contract.contractFileUrl} target="_blank" rel="noopener noreferrer">
-                <Button variant="outline" size="sm">
-                  <Download className="h-4 w-4 mr-2" />
-                  PDF
-                </Button>
-              </a>
+              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
+                {downloadingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                PDF
+              </Button>
             )}
           </div>
         </div>
@@ -432,11 +460,18 @@ export default function TenantContractDetailPage() {
                   <span className="text-sm">{att.label || att.fileName || 'Załącznik'}</span>
                 </div>
                 {att.fileUrl && (
-                  <a href={att.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm">
-                      <Download className="h-4 w-4" />
-                    </Button>
-                  </a>
+                  <Button variant="ghost" size="sm" onClick={async () => {
+                    if (att.fileUrl.startsWith('http')) {
+                      window.open(att.fileUrl, '_blank')
+                    } else {
+                      const res = await fetch(`/api/contracts/download?path=${encodeURIComponent(att.fileUrl)}&contractId=${contract.id}`)
+                      const data = await res.json()
+                      if (data.url) window.open(data.url, '_blank')
+                      else alert(data.error || 'Błąd pobierania')
+                    }
+                  }}>
+                    <Download className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
             ))}
