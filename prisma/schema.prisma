@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: добавлена поддержка регионов, лицензионное соглашение, расширенные данные tenant
+// Обновлено: Contracts V2 — расширенные договоры, вложения, польские требования
 
 generator client {
   provider = "prisma-client-js"
@@ -27,15 +27,15 @@ model User {
   isOwner  Boolean @default(false)
   isTenant Boolean @default(false)
 
-  // НОВОЕ: Региональные настройки
-  regionCode String  @default("PL") // "PL" | "UA" | "DE" | "CZ" | "SK" | "LT" | "LV" | "EE"
-  language   String  @default("pl") // Язык интерфейса
-  timezone   String  @default("Europe/Warsaw")
+  // Региональные настройки
+  regionCode String @default("PL")
+  language   String @default("pl")
+  timezone   String @default("Europe/Warsaw")
 
-  // НОВОЕ: Лицензионное соглашение
-  termsAcceptedAt   DateTime? // Когда принято соглашение
-  privacyAcceptedAt DateTime? // Когда принята политика конфиденциальности
-  termsVersion      String?   // Версия соглашения ("1.0", "1.1", etc.)
+  // Лицензионное соглашение
+  termsAcceptedAt   DateTime?
+  privacyAcceptedAt DateTime?
+  termsVersion      String?
 
   // Банковские реквизиты (для владельцев)
   bankName      String?
@@ -72,33 +72,31 @@ model User {
 model Invitation {
   id         String           @id @default(uuid())
   propertyId String
-  email      String?          // Опционально - можно пригласить конкретный email
+  email      String?
   code       String           @unique
-  status     InvitationStatus @default(PENDING) // НОВОЕ: статус приглашения
+  status     InvitationStatus @default(PENDING)
   expiresAt  DateTime
   usedAt     DateTime?
-  usedBy     String?          // ID пользователя который использовал
+  usedBy     String?
   createdAt  DateTime         @default(now())
 
-  // НОВОЕ: Связь с созданным tenant
-  tenantId String? // ID tenant, созданного при принятии приглашения
+  tenantId String?
 
   // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  // Индексы для производительности
+  // Индексы
   @@index([code])
   @@index([expiresAt])
   @@index([propertyId, status])
   @@map("invitations")
 }
 
-// НОВОЕ: Статус приглашения
 enum InvitationStatus {
-  PENDING  // Ожидает использования
-  ACCEPTED // Принято
-  EXPIRED  // Истекло
-  REVOKED  // Отозвано владельцем
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
@@ -110,7 +108,7 @@ model Property {
   address     String
   city        String
   postalCode  String?
-  country     String         @default("Poland") // НОВОЕ: страна для определения региона
+  country     String         @default("Poland")
   area        Float?
   rooms       Int?
   floor       Int?
@@ -130,7 +128,7 @@ model Property {
   announcements    Announcement[]
   paymentTemplates PaymentTemplate[]
 
-  // Индекс для запросов владельца
+  // Индексы
   @@index([userId, status])
   @@map("properties")
 }
@@ -144,39 +142,42 @@ enum PropertyStatus {
 // ============== ЖИЛЬЦЫ ==============
 
 model Tenant {
-  id           String    @id @default(uuid())
-  userId       String    // Владелец, который добавил жильца
+  id           String  @id @default(uuid())
+  userId       String
   propertyId   String?
-  tenantUserId String?   @unique // Аккаунт жильца (если зарегистрировался)
+  tenantUserId String? @unique
   firstName    String
   lastName     String
   email        String?
   phone        String?
 
-  // НОВОЕ: Универсальный национальный ID (вместо только PESEL)
-  nationalId     String? // Значение: "12345678901"
-  nationalIdType String? // Тип: "PESEL" | "INN" | "Steuer-ID" | "Rodné číslo" | etc.
+  // Универсальный национальный ID
+  nationalId     String?
+  nationalIdType String?
 
-  // DEPRECATED: Оставлено для обратной совместимости
-  // После миграции данных можно удалить
-  pesel String? // @deprecated - используйте nationalId + nationalIdType
+  // @deprecated — используйте nationalId + nationalIdType
+  pesel String?
 
-  // НОВОЕ: Региональные настройки
+  // Региональные настройки
   regionCode String @default("PL")
 
-  // НОВОЕ: Экстренный контакт
-  emergencyContact String? // ФИО контактного лица
-  emergencyPhone   String? // Телефон экстренного контакта
+  // Экстренный контакт
+  emergencyContact String?
+  emergencyPhone   String?
+
+  // Польские требования (Contracts V2)
+  citizenship         String? // Obywatelstwo
+  registrationAddress String? // Adres zameldowania
 
   // Даты аренды
   moveInDate  DateTime?
   moveOutDate DateTime?
   isActive    Boolean   @default(true)
 
-  // НОВОЕ: Лицензионное соглашение
-  termsAcceptedAt         DateTime? // Когда принято соглашение
-  termsVersion            String?   // Версия соглашения
-  registrationCompletedAt DateTime? // Когда завершена полная регистрация
+  // Лицензионное соглашение
+  termsAcceptedAt         DateTime?
+  termsVersion            String?
+  registrationCompletedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -197,31 +198,79 @@ model Tenant {
   @@map("tenants")
 }
 
-// ============== ДОГОВОРЫ ==============
+// ============== ДОГОВОРЫ (Contracts V2) ==============
 
 model Contract {
-  id            String         @id @default(uuid())
-  propertyId    String
-  tenantId      String
-  type          ContractType   @default(STANDARD)
-  startDate     DateTime
-  endDate       DateTime?
-  rentAmount    Float
-  depositAmount Float?
-  paymentDay    Int            @default(10) // 1-28
-  status        ContractStatus @default(ACTIVE)
-  notes         String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id         String       @id @default(uuid())
+  propertyId String
+  tenantId   String
+  type       ContractType @default(STANDARD)
+  startDate  DateTime
+  endDate    DateTime?
+
+  // Финансы: czynsz + opłaty + media
+  rentAmount       Float                          // Czynsz najmu
+  adminFee         Float          @default(0)     // Czynsz administracyjny
+  utilitiesAdvance Float          @default(0)     // Zaliczka na media
+  depositAmount    Float?
+  paymentDay       Int            @default(10)    // 1-28
+
+  // Статус и подпись
+  status         ContractStatus @default(DRAFT)
+  signedAt       DateTime?
+  signedByTenant Boolean        @default(false)
+  signedByOwner  Boolean        @default(false)
+
+  // Источник: форма или загруженный PDF
+  contractSource  String @default("FORM")         // "FORM" | "UPLOAD"
+  contractFileUrl String?                          // URL загруженного PDF
+
+  // Najem okazjonalny — lokal zastępczy
+  substituteAddress    String?
+  substituteCity       String?
+  substitutePostalCode String?
+
+  // Масштабирование
+  currency String @default("PLN")
+  country  String @default("PL")
+  locale   String @default("pl-PL")
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Связи
-  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property    Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  attachments ContractAttachment[]
 
   // Индексы
   @@index([status, endDate])
   @@index([propertyId, status])
+  @@index([country])
+  @@index([contractSource])
   @@map("contracts")
+}
+
+model ContractAttachment {
+  id         String   @id @default(uuid())
+  contractId String
+  type       String   // "AKT_NOTARIALNY" | "ZGODA_WLASCICIELA" | "OTHER"
+  label      String
+  fileUrl    String
+  fileName   String?
+  fileSize   Int?
+  mimeType   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Связи
+  contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  // Индексы
+  @@index([contractId])
+  @@map("contract_attachments")
 }
 
 enum ContractType {
@@ -232,6 +281,8 @@ enum ContractType {
 
 enum ContractStatus {
   DRAFT
+  PENDING_SIGNATURE
+  SIGNED
   ACTIVE
   EXPIRED
   TERMINATED
@@ -241,7 +292,7 @@ enum ContractStatus {
 
 model Payment {
   id          String        @id @default(uuid())
-  userId      String        // Владелец
+  userId      String
   tenantId    String
   amount      Float
   type        PaymentType
@@ -252,13 +303,13 @@ model Payment {
   notes       String?
 
   // Данные для подтверждения
-  markedPaidAt    DateTime? // Когда жилец нажал "Я оплатил"
-  confirmedAt     DateTime? // Когда владелец подтвердил
-  rejectedAt      DateTime? // Когда владелец отклонил
-  rejectionReason String?   // Причина отклонения
+  markedPaidAt    DateTime?
+  confirmedAt     DateTime?
+  rejectedAt      DateTime?
+  rejectionReason String?
 
   // Stripe
-  stripePaymentId String? // ID платежа в Stripe
+  stripePaymentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -282,12 +333,12 @@ enum PaymentType {
 }
 
 enum PaymentStatus {
-  PENDING              // Ожидает оплаты
-  PENDING_CONFIRMATION // Жилец отметил оплату, ждёт подтверждения
-  PAID                 // Подтверждено/Оплачено
-  OVERDUE              // Просрочено
-  REJECTED             // Отклонено владельцем
-  CANCELLED            // Отменено
+  PENDING
+  PENDING_CONFIRMATION
+  PAID
+  OVERDUE
+  REJECTED
+  CANCELLED
 }
 
 // ============== ШАБЛОНЫ ПЛАТЕЖЕЙ ==============
@@ -298,8 +349,8 @@ model PaymentTemplate {
   tenantId      String
   amount        Float
   type          PaymentType
-  dayOfMonth    Int         @default(1)  // День создания платежа
-  dueDayOfMonth Int         @default(10) // День оплаты
+  dayOfMonth    Int         @default(1)
+  dueDayOfMonth Int         @default(10)
   isActive      Boolean     @default(true)
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -316,7 +367,7 @@ model Message {
   id         String    @id @default(uuid())
   senderId   String
   receiverId String
-  propertyId String    // Контекст - к какой квартире относится
+  propertyId String
   content    String
   isRead     Boolean   @default(false)
   readAt     DateTime?
@@ -338,11 +389,11 @@ model Message {
 model Ticket {
   id          String       @id @default(uuid())
   propertyId  String
-  createdById String       // Кто создал (жилец)
+  createdById String
   title       String
   description String
   status      TicketStatus @default(NEW)
-  photos      String[]     // URLs фотографий
+  photos      String[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
@@ -355,10 +406,10 @@ model Ticket {
 }
 
 enum TicketStatus {
-  NEW         // Новая
-  IN_PROGRESS // В работе
-  RESOLVED    // Решена
-  CLOSED      // Закрыта
+  NEW
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
 }
 
 model TicketComment {
@@ -379,10 +430,10 @@ model TicketComment {
 model Announcement {
   id          String    @id @default(uuid())
   propertyId  String
-  createdById String    // Владелец
+  createdById String
   title       String
   content     String
-  eventDate   DateTime? // Дата события (если есть)
+  eventDate   DateTime?
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
