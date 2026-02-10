@@ -249,6 +249,10 @@ export async function PUT(
     // Notes
     if (body.notes !== undefined) updateData.notes = body.notes
 
+    // V4: Legal fields
+    if (body.noticePeriod !== undefined) updateData.noticePeriod = parseInt(body.noticePeriod) || 1
+    if (body.additionalTerms !== undefined) updateData.additionalTerms = body.additionalTerms || null
+
     // Substitute property
     if (body.substituteAddress !== undefined) updateData.substituteAddress = body.substituteAddress
     if (body.substituteCity !== undefined) updateData.substituteCity = body.substituteCity

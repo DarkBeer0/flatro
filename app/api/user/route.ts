@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 
-// GET - получить пользователя (БЕЗ автосоздания)
+// GET - получить пользователя
 export async function GET() {
   try {
     const supabase = await createClient()
@@ -13,7 +13,6 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Только ищем, НЕ создаём
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
@@ -24,6 +23,13 @@ export async function GET() {
         phone: true,
         isOwner: true,
         isTenant: true,
+        // V4: Персональные данные владельца
+        address: true,
+        city: true,
+        postalCode: true,
+        nationalId: true,
+        nationalIdType: true,
+        // Банковские реквизиты
         bankName: true,
         iban: true,
         accountHolder: true,
@@ -39,15 +45,12 @@ export async function GET() {
       }, { status: 404 })
     }
 
-    // Вычисляем role для совместимости
     const role = dbUser.isOwner ? 'OWNER' : (dbUser.isTenant ? 'TENANT' : 'OWNER')
-    
-    // Собираем полное имя для совместимости
     const fullName = [dbUser.firstName, dbUser.lastName].filter(Boolean).join(' ') || null
 
     return NextResponse.json({
       ...dbUser,
-      name: fullName, // Для совместимости
+      name: fullName,
       role,
     })
   } catch (error) {
@@ -66,7 +69,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Проверяем что пользователь существует
     const existingUser = await prisma.user.findUnique({
       where: { id: user.id }
     })
@@ -80,25 +82,20 @@ export async function PUT(request: Request) {
 
     const body = await request.json()
     const { 
-      firstName, 
-      lastName, 
-      name, // для обратной совместимости
-      phone, 
-      bankName, 
-      iban, 
-      accountHolder 
+      firstName, lastName, name, phone, 
+      bankName, iban, accountHolder,
+      // V4: Новые поля для договоров
+      address, city, postalCode, nationalId, nationalIdType,
     } = body
 
     // Валидация имени
     if (firstName !== undefined && firstName.trim().length > 0 && firstName.trim().length < 2) {
       return NextResponse.json({ error: 'Имя должно содержать минимум 2 символа' }, { status: 400 })
     }
-    
     if (lastName !== undefined && lastName.trim().length > 0 && lastName.trim().length < 2) {
       return NextResponse.json({ error: 'Фамилия должна содержать минимум 2 символа' }, { status: 400 })
     }
 
-    // Валидация символов в имени (только буквы, пробелы и дефисы)
     const nameRegex = /^[\p{L}\s-]*$/u
     if (firstName && !nameRegex.test(firstName)) {
       return NextResponse.json({ error: 'Имя может содержать только буквы' }, { status: 400 })
@@ -107,39 +104,30 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Фамилия может содержать только буквы' }, { status: 400 })
     }
 
-    // Формируем данные для обновления
     const updateData: Record<string, unknown> = {}
 
-    // Поддержка нового формата (firstName + lastName)
-    if (firstName !== undefined) {
-      updateData.firstName = firstName.trim() || null
-    }
-    if (lastName !== undefined) {
-      updateData.lastName = lastName.trim() || null
-    }
+    if (firstName !== undefined) updateData.firstName = firstName.trim() || null
+    if (lastName !== undefined) updateData.lastName = lastName.trim() || null
 
-    // Обратная совместимость: если передано только name (старый формат)
+    // Обратная совместимость
     if (name !== undefined && firstName === undefined && lastName === undefined) {
       const nameParts = (name || '').trim().split(' ')
       updateData.firstName = nameParts[0] || null
       updateData.lastName = nameParts.slice(1).join(' ') || null
     }
 
-    if (phone !== undefined) {
-      updateData.phone = phone?.trim() || null
-    }
+    if (phone !== undefined) updateData.phone = phone?.trim() || null
 
-    // Банковские реквизиты (только для владельцев)
+    // Данные владельца (банк + адрес + ID — только для владельцев)
     if (existingUser.isOwner) {
-      if (bankName !== undefined) {
-        updateData.bankName = bankName?.trim() || null
-      }
-      if (iban !== undefined) {
-        updateData.iban = iban?.trim() || null
-      }
-      if (accountHolder !== undefined) {
-        updateData.accountHolder = accountHolder?.trim() || null
-      }
+      if (bankName !== undefined) updateData.bankName = bankName?.trim() || null
+      if (iban !== undefined) updateData.iban = iban?.trim() || null
+      if (accountHolder !== undefined) updateData.accountHolder = accountHolder?.trim() || null
+      if (address !== undefined) updateData.address = address?.trim() || null
+      if (city !== undefined) updateData.city = city?.trim() || null
+      if (postalCode !== undefined) updateData.postalCode = postalCode?.trim() || null
+      if (nationalId !== undefined) updateData.nationalId = nationalId?.trim() || null
+      if (nationalIdType !== undefined) updateData.nationalIdType = nationalIdType?.trim() || null
     }
 
     const dbUser = await prisma.user.update({
@@ -153,6 +141,11 @@ export async function PUT(request: Request) {
         phone: true,
         isOwner: true,
         isTenant: true,
+        address: true,
+        city: true,
+        postalCode: true,
+        nationalId: true,
+        nationalIdType: true,
         bankName: true,
         iban: true,
         accountHolder: true,

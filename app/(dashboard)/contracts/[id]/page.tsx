@@ -81,6 +81,37 @@ export default function ContractDetailPage() {
   const [downloadingPdf, setDownloadingPdf] = useState(false)
   const [bucketError, setBucketError] = useState<string | null>(null)
 
+  // Clauses modal
+  const [showClausesModal, setShowClausesModal] = useState(false)
+  const [clauses, setClauses] = useState<Record<string, boolean>>({
+    noPets: false,
+    noSmoking: false,
+    quietHours: false,
+    noChanges: false,
+    insurance: false,
+    maxPersons: false,
+    noBusinessUse: false,
+    cleaningOnExit: false,
+    keyReturn: false,
+    parkingIncluded: false,
+    furnished: false,
+  })
+
+  // Additional residents for maxPersons clause
+  const [residents, setResidents] = useState<Array<{ firstName: string; lastName: string; pesel: string }>>([])
+
+  function addResident() {
+    setResidents([...residents, { firstName: '', lastName: '', pesel: '' }])
+  }
+
+  function removeResident(index: number) {
+    setResidents(residents.filter((_, i) => i !== index))
+  }
+
+  function updateResident(index: number, field: string, value: string) {
+    setResidents(residents.map((r, i) => i === index ? { ...r, [field]: value } : r))
+  }
+
   const loadContract = useCallback(async () => {
     try {
       const res = await fetch(`/api/contracts/${id}`)
@@ -181,23 +212,31 @@ export default function ContractDetailPage() {
     }
   }
 
-  // Generate PDF draft
-  async function handleGeneratePdf() {
+  // Open clauses modal before generating
+  function handleGeneratePdf() {
+    setShowClausesModal(true)
+  }
+
+  // Actually generate the contract with selected clauses
+  async function doGeneratePdf() {
+    setShowClausesModal(false)
     setGeneratingPdf(true)
     try {
-      const res = await fetch(`/api/contracts/${contract.id}/generate-pdf`, { method: 'POST' })
+      const res = await fetch(`/api/contracts/${contract.id}/generate-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clauses, residents: clauses.maxPersons ? residents.filter(r => r.firstName || r.lastName) : [] }),
+      })
       if (!res.ok) {
-        alert('Błąd generowania PDF')
+        alert('Błąd generowania umowy')
         return
       }
       const html = await res.text()
-      // Open in new window for print-to-PDF
       const win = window.open('', '_blank')
       if (win) {
         win.document.write(html)
         win.document.close()
-        // Auto-trigger print dialog after a brief delay
-        setTimeout(() => win.print(), 500)
+        setTimeout(() => win.print(), 600)
       }
     } catch {
       alert('Błąd połączenia')
@@ -211,18 +250,29 @@ export default function ContractDetailPage() {
     const file = e.target.files?.[0]
     if (!file || !contract) return
 
+    // Overwrite confirmation
+    if (contract.contractFileUrl) {
+      const confirmed = window.confirm(
+        'Ten kontrakt ma już załączony plik PDF.\n\nCzy na pewno chcesz go nadpisać?\nStary plik zostanie usunięty.'
+      )
+      if (!confirmed) {
+        e.target.value = ''
+        return
+      }
+    }
+
     setUploadingPdf(true)
     setBucketError(null)
 
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('contractId', contract.id)
-    formData.append('type', 'SIGNED_CONTRACT')
+    const uploadData = new FormData()
+    uploadData.append('file', file)
+    uploadData.append('contractId', contract.id)
+    uploadData.append('type', 'SIGNED_CONTRACT')
 
     try {
       const res = await fetch('/api/contracts/upload', {
         method: 'POST',
-        body: formData,
+        body: uploadData,
       })
       const data = await res.json()
 
@@ -517,7 +567,7 @@ export default function ContractDetailPage() {
             ) : (
               <Printer className="h-4 w-4 mr-2" />
             )}
-            Generuj PDF (draft)
+            Generuj umowę
           </Button>
 
           <label>
@@ -788,6 +838,140 @@ export default function ContractDetailPage() {
             })}
           </div>
         </Card>
+      )}
+
+      {/* ===== CLAUSES MODAL ===== */}
+      {showClausesModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4">
+          <div className="bg-white sm:rounded-xl rounded-t-xl shadow-2xl w-full sm:max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col">
+            {/* Sticky header */}
+            <div className="p-4 sm:p-6 border-b flex-shrink-0">
+              <h2 className="text-lg font-semibold text-gray-900">Warunki umowy</h2>
+              <p className="text-sm text-gray-500 mt-1">Zaznacz ograniczenia, które chcesz uwzględnić w umowie</p>
+            </div>
+
+            {/* Scrollable content */}
+            <div className="p-4 sm:p-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+              {[
+                { key: 'noPets', label: 'Zakaz trzymania zwierząt', desc: 'Najemca nie może trzymać zwierząt bez zgody' },
+                { key: 'noSmoking', label: 'Zakaz palenia', desc: 'Zakaz palenia tytoniu i e-papierosów w lokalu' },
+                { key: 'quietHours', label: 'Cisza nocna 22:00–6:00', desc: 'Obowiązek przestrzegania ciszy nocnej' },
+                { key: 'noChanges', label: 'Zakaz zmian w lokalu', desc: 'Zakaz malowania, wiercenia itp. bez zgody' },
+                { key: 'insurance', label: 'Obowiązek ubezpieczenia OC', desc: 'Najemca musi posiadać ubezpieczenie' },
+                { key: 'noBusinessUse', label: 'Zakaz działalności gospodarczej', desc: 'Lokal wyłącznie na cele mieszkalne' },
+                { key: 'cleaningOnExit', label: 'Sprzątanie przy zdaniu', desc: 'Lokal oddany czysty i wysprzątany' },
+                { key: 'keyReturn', label: 'Zwrot kluczy', desc: 'Obowiązek zwrotu wszystkich kompletów kluczy' },
+                { key: 'parkingIncluded', label: 'Miejsce parkingowe w cenie', desc: 'Najemca ma prawo do miejsca parkingowego' },
+                { key: 'furnished', label: 'Lokal umeblowany', desc: 'Wynajem z meblami i sprzętem AGD/RTV' },
+              ].map((item) => (
+                <label
+                  key={item.key}
+                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    clauses[item.key] ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={clauses[item.key] || false}
+                    onChange={(e) => setClauses({ ...clauses, [item.key]: e.target.checked })}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">{item.label}</div>
+                    <div className="text-xs text-gray-500">{item.desc}</div>
+                  </div>
+                </label>
+              ))}
+
+              {/* === MAXPERSONS — expandable with residents list === */}
+              <div className={`rounded-lg border transition-colors ${clauses.maxPersons ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
+                <label className="flex items-start gap-3 p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={clauses.maxPersons || false}
+                    onChange={(e) => {
+                      setClauses({ ...clauses, maxPersons: e.target.checked })
+                      if (e.target.checked && residents.length === 0) addResident()
+                    }}
+                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">Ograniczenie osób w lokalu</div>
+                    <div className="text-xs text-gray-500">Tylko osoby wskazane w umowie — dodaj współlokatorów</div>
+                  </div>
+                </label>
+
+                {clauses.maxPersons && (
+                  <div className="px-3 pb-3 space-y-2">
+                    <div className="border-t border-blue-200 pt-3">
+                      <p className="text-xs text-gray-500 mb-2">
+                        Najemca jest wpisany automatycznie. Dodaj dodatkowe osoby zamieszkujące lokal:
+                      </p>
+
+                      {residents.map((r, i) => (
+                        <div key={i} className="flex items-start gap-2 mb-2">
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                            <input
+                              type="text"
+                              placeholder="Imię"
+                              value={r.firstName}
+                              onChange={(e) => updateResident(i, 'firstName', e.target.value)}
+                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="Nazwisko"
+                              value={r.lastName}
+                              onChange={(e) => updateResident(i, 'lastName', e.target.value)}
+                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                            <input
+                              type="text"
+                              placeholder="PESEL / nr dokumentu"
+                              value={r.pesel}
+                              onChange={(e) => updateResident(i, 'pesel', e.target.value)}
+                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeResident(i)}
+                            className="text-red-400 hover:text-red-600 px-1 py-1.5 text-xs font-bold"
+                            title="Usuń"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addResident}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-1"
+                      >
+                        <span className="text-lg leading-none">+</span> Dodaj osobę
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Sticky footer */}
+            <div className="p-4 sm:p-6 border-t flex items-center justify-between flex-shrink-0 bg-white sm:rounded-b-xl">
+              <button
+                onClick={() => setShowClausesModal(false)}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                Anuluj
+              </button>
+              <Button onClick={doGeneratePdf}>
+                <Printer className="h-4 w-4 mr-2" />
+                Generuj umowę
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: Contracts V3 — история статусов, подписи двумя сторонами, PDF
+// Обновлено: Contracts V4 — юридические шаблоны, данные владельца
 
 generator client {
   provider = "prisma-client-js"
@@ -36,6 +36,15 @@ model User {
   termsAcceptedAt   DateTime?
   privacyAcceptedAt DateTime?
   termsVersion      String?
+
+  // V4: Адрес владельца (для договоров — §1 Dane Wynajmującego)
+  address    String?
+  city       String?
+  postalCode String?
+
+  // V4: PESEL / нац. ID владельца (для договоров)
+  nationalId     String?
+  nationalIdType String? @default("PESEL")
 
   // Банковские реквизиты (для владельцев)
   bankName      String?
@@ -167,7 +176,7 @@ model Tenant {
 
   // Польские требования (Contracts V2)
   citizenship         String? // Obywatelstwo
-  registrationAddress String? // Adres zameldowania
+  registrationAddress String? // Adres замeldования
 
   // Даты аренды
   moveInDate  DateTime?
@@ -198,7 +207,7 @@ model Tenant {
   @@map("tenants")
 }
 
-// ============== ДОГОВОРЫ (Contracts V3) ==============
+// ============== ДОГОВОРЫ (Contracts V4) ==============
 
 model Contract {
   id         String       @id @default(uuid())
@@ -211,7 +220,7 @@ model Contract {
   // Финансы: czynsz + opłaty + media
   rentAmount       Float                          // Czynsz najmu
   adminFee         Float          @default(0)     // Czynsz administracyjny
-  utilitiesAdvance Float          @default(0)     // Zaliczka на media
+  utilitiesAdvance Float          @default(0)     // Залiczка на media
   depositAmount    Float?
   paymentDay       Int            @default(10)    // 1-28
 
@@ -221,17 +230,21 @@ model Contract {
   signedByTenant Boolean        @default(false)
   signedByOwner  Boolean        @default(false)
 
-  // V3: Таймстемпы подписей каждой стороны
+  // V3: Таймстемпы подписей
   ownerSignedAt  DateTime? @map("owner_signed_at")
   tenantSignedAt DateTime? @map("tenant_signed_at")
 
-  // V3: Отслеживание изменений статуса
+  // V3: Отслеживание статуса
   statusUpdatedAt DateTime? @default(now()) @map("status_updated_at")
   statusUpdatedBy String?   @map("status_updated_by")
 
+  // V4: Юридические поля
+  noticePeriod    Int?    @default(1)   // Okres wypowiedzenia (мес.)
+  additionalTerms String?               // Szczególne postanowienia
+
   // Источник: форма или загруженный PDF
-  contractSource  String @default("FORM")         // "FORM" | "UPLOAD"
-  contractFileUrl String?                          // URL загруженного PDF
+  contractSource  String @default("FORM")
+  contractFileUrl String?
 
   // Najem okazjonalny — lokal zastępczy
   substituteAddress    String?
@@ -262,7 +275,6 @@ model Contract {
   @@map("contracts")
 }
 
-// V3: История изменений статуса договора
 model ContractStatusHistory {
   id         String   @id @default(uuid())
   contractId String   @map("contract_id")
@@ -272,10 +284,8 @@ model ContractStatusHistory {
   changedAt  DateTime @default(now()) @map("changed_at")
   reason     String?
 
-  // Связи
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
-  // Индексы
   @@index([contractId, changedAt(sort: Desc)])
   @@index([changedBy])
   @@map("contract_status_history")
@@ -284,7 +294,7 @@ model ContractStatusHistory {
 model ContractAttachment {
   id         String   @id @default(uuid())
   contractId String
-  type       String   // "AKT_NOTARIALNY" | "ZGODA_WLASCICIELA" | "OTHER"
+  type       String
   label      String
   fileUrl    String
   fileName   String?
@@ -294,10 +304,8 @@ model ContractAttachment {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  // Связи
   contract Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
-  // Индексы
   @@index([contractId])
   @@map("contract_attachments")
 }
@@ -331,23 +339,19 @@ model Payment {
   period      String?
   notes       String?
 
-  // Данные для подтверждения
   markedPaidAt    DateTime?
   confirmedAt     DateTime?
   rejectedAt      DateTime?
   rejectionReason String?
 
-  // Stripe
   stripePaymentId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Связи
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // Индексы
   @@index([status, dueDate])
   @@index([tenantId, status])
   @@index([userId, createdAt])
@@ -370,8 +374,6 @@ enum PaymentStatus {
   CANCELLED
 }
 
-// ============== ШАБЛОНЫ ПЛАТЕЖЕЙ ==============
-
 model PaymentTemplate {
   id            String      @id @default(uuid())
   propertyId    String
@@ -384,7 +386,6 @@ model PaymentTemplate {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
   @@map("payment_templates")
@@ -402,18 +403,16 @@ model Message {
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
-  // Связи
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  // Индексы
   @@index([receiverId, isRead])
   @@index([propertyId, createdAt])
   @@map("messages")
 }
 
-// ============== ЗАЯВКИ (ТИКЕТЫ) ==============
+// ============== ЗАЯВКИ ==============
 
 model Ticket {
   id          String       @id @default(uuid())
@@ -426,7 +425,6 @@ model Ticket {
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
-  // Связи
   property  Property        @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
   comments  TicketComment[]
@@ -448,7 +446,6 @@ model TicketComment {
   content   String
   createdAt DateTime @default(now())
 
-  // Связи
   ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@map("ticket_comments")
@@ -467,14 +464,13 @@ model Announcement {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  // Связи
   property  Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@map("announcements")
 }
 
-// ============== СЧЁТЧИКИ (MEDIA) ==============
+// ============== СЧЁТЧИКИ ==============
 
 model Meter {
   id           String         @id @default(uuid())
@@ -486,7 +482,6 @@ model Meter {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  // Связи
   property Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   readings MeterReading[]
 
@@ -510,7 +505,6 @@ model MeterReading {
   photoUrl    String?
   createdAt   DateTime @default(now())
 
-  // Связи
   meter  Meter   @relation(fields: [meterId], references: [id], onDelete: Cascade)
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 

@@ -86,6 +86,8 @@ function NewContractForm() {
     depositAmount: '',
     paymentDay: '10',
     notes: '',
+    noticePeriod: '1',
+    additionalTerms: '',
     currency: 'PLN',
     country: 'PL',
   })
@@ -194,6 +196,8 @@ function NewContractForm() {
         depositAmount: formData.depositAmount || null,
         paymentDay: formData.paymentDay,
         notes: formData.notes || null,
+        noticePeriod: parseInt(formData.noticePeriod) || 1,
+        additionalTerms: formData.additionalTerms || null,
         contractSource: creationMode,
         contractFileUrl: contractFileUrl || null,
         currency: formData.currency,
@@ -639,7 +643,43 @@ function NewContractForm() {
             }}
           />
         )}
+        {/* ===== WARUNKI WYPOWIEDZENIA ===== */}
+        <Card className="p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-6">Warunki wypowiedzenia</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label htmlFor="noticePeriod">Okres wypowiedzenia (miesiące)</Label>
+              <select
+                id="noticePeriod"
+                name="noticePeriod"
+                value={formData.noticePeriod}
+                onChange={handleChange}
+                className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="1">1 miesiąc</option>
+                <option value="2">2 miesiące</option>
+                <option value="3">3 miesiące</option>
+                <option value="6">6 miesięcy</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Dotyczy umów na czas nieokreślony
+              </p>
+            </div>
+          </div>
 
+          <div className="mt-4">
+            <Label htmlFor="additionalTerms">Szczególne postanowienia umowy</Label>
+            <textarea
+              id="additionalTerms"
+              name="additionalTerms"
+              rows={3}
+              placeholder="Np. zwierzęta dozwolone, zakaz palenia, parking w cenie..."
+              value={formData.additionalTerms}
+              onChange={handleChange}
+              className="mt-1 w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </Card>
         {/* ===== NOTES ===== */}
         <Card className="p-6 mb-6">
           <h2 className="text-lg font-semibold mb-6">{t.sections.notes}</h2>

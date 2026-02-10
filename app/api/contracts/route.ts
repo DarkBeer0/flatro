@@ -125,6 +125,8 @@ export async function POST(request: NextRequest) {
         depositAmount: depositAmount ? parseFloat(depositAmount) : null,
         paymentDay: parseInt(paymentDay) || 10,
         notes: notes || null,
+        noticePeriod: body.noticePeriod ? parseInt(body.noticePeriod) : 1,
+        additionalTerms: body.additionalTerms || null,
         status: initialStatus,
         contractSource: contractSource || 'FORM',
         contractFileUrl: contractFileUrl || null,

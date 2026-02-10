@@ -29,6 +29,11 @@ interface UserData {
   bankName: string | null
   iban: string | null
   accountHolder: string | null
+  address: string | null
+  city: string | null
+  postalCode: string | null
+  nationalId: string | null
+  nationalIdType: string | null
 }
 
 interface RolesInfo {
@@ -91,6 +96,11 @@ function SettingsContent() {
     bankName: '',
     iban: '',
     accountHolder: '',
+    address: '',
+    city: '',
+    postalCode: '',
+    nationalId: '',
+    nationalIdType: 'PESEL',
   })
 
   useEffect(() => {
@@ -121,6 +131,11 @@ function SettingsContent() {
         bankName: data.bankName || '',
         iban: data.iban || '',
         accountHolder: data.accountHolder || '',
+        address: data.address || '',
+        city: data.city || '',
+        postalCode: data.postalCode || '',
+        nationalId: data.nationalId || '',
+        nationalIdType: data.nationalIdType || 'PESEL',
       })
 
       // Синхронизируем кэш ролей
@@ -176,6 +191,11 @@ function SettingsContent() {
           bankName: formData.bankName,
           iban: formData.iban,
           accountHolder: formData.accountHolder,
+          address: formData.address,
+          city: formData.city,
+          postalCode: formData.postalCode,
+          nationalId: formData.nationalId,
+          nationalIdType: formData.nationalIdType,
         }),
       })
       if (res.ok) {
@@ -374,7 +394,52 @@ function SettingsContent() {
                     </div>
                   </div>
                 </div>
+                {/* Персональные данные для договоров — только для владельцев */}
+                {userData?.isOwner && (
+                  <>
+                    <div className="pt-4 border-t">
+                      <h3 className="text-sm font-medium mb-3">Dane do umów</h3>
+                      <p className="text-xs text-gray-500 mb-4">Te dane będą automatycznie wstawiane do generowanych umów najmu</p>
+                    </div>
 
+                    <div className="space-y-1.5">
+                      <Label htmlFor="address">Adres zamieszkania</Label>
+                      <Input id="address" name="address" value={formData.address} onChange={handleChange} placeholder="ul. Przykładowa 10/5" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="postalCode">Kod pocztowy</Label>
+                        <Input id="postalCode" name="postalCode" value={formData.postalCode} onChange={handleChange} placeholder="00-001" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="city">Miasto</Label>
+                        <Input id="city" name="city" value={formData.city} onChange={handleChange} placeholder="Warszawa" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="nationalIdType">Rodzaj dokumentu</Label>
+                        <select
+                          id="nationalIdType"
+                          name="nationalIdType"
+                          value={formData.nationalIdType}
+                          onChange={(e) => { setFormData({ ...formData, nationalIdType: e.target.value }); setSaved(false) }}
+                          className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="PESEL">PESEL</option>
+                          <option value="PASZPORT">Numer paszportu</option>
+                          <option value="DOWOD">Numer dowodu osobistego</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="nationalId">{formData.nationalIdType === 'PESEL' ? 'PESEL' : 'Numer dokumentu'}</Label>
+                        <Input id="nationalId" name="nationalId" value={formData.nationalId} onChange={handleChange} placeholder={formData.nationalIdType === 'PESEL' ? '12345678901' : 'ABC123456'} />
+                      </div>
+                    </div>
+                  </>
+                )}
                 {/* Банковские реквизиты - только для владельцев */}
                 {userData?.isOwner && (
                   <>
