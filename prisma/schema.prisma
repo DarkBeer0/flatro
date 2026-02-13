@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: Contracts V4 — юридические шаблоны, данные владельца
+// Обновлено: Utilities V5 — Meters & Utilities Module (Rozliczenie mediów)
 
 generator client {
   provider = "prisma-client-js"
@@ -137,6 +137,12 @@ model Property {
   announcements    Announcement[]
   paymentTemplates PaymentTemplate[]
 
+  // V5: Utilities Module — новые связи
+  fixedUtilities FixedUtility[]
+  utilityRates   UtilityRate[]
+  settlements    UtilitySettlement[]
+  ledgerEntries  TenantLedger[]
+
   // Индексы
   @@index([userId, status])
   @@map("properties")
@@ -176,7 +182,7 @@ model Tenant {
 
   // Польские требования (Contracts V2)
   citizenship         String? // Obywatelstwo
-  registrationAddress String? // Adres замeldования
+  registrationAddress String? // Adres zameldowania
 
   // Даты аренды
   moveInDate  DateTime?
@@ -198,6 +204,10 @@ model Tenant {
   payments      Payment[]
   contracts     Contract[]
   meterReadings MeterReading[]
+
+  // V5: Utilities Module — новые связи
+  settlementShares SettlementShare[]
+  ledgerEntries    TenantLedger[]
 
   // Индексы
   @@index([email])
@@ -470,21 +480,44 @@ model Announcement {
   @@map("announcements")
 }
 
-// ============== СЧЁТЧИКИ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║                                                              ║
+// ║          V5: METERS & UTILITIES MODULE                       ║
+// ║          (Rozliczenie mediów)                                ║
+// ║                                                              ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+// ============== СЧЁТЧИКИ (V5: Enhanced) ==============
 
 model Meter {
-  id           String         @id @default(uuid())
+  id           String      @id @default(uuid())
   propertyId   String
   type         MeterType
   meterNumber  String?
+  serialNumber String?                          // V5: Серийный номер
   unit         String
   pricePerUnit Float?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
 
-  property Property       @relation(fields: [propertyId], references: [id], onDelete: Cascade)
-  readings MeterReading[]
+  // V5: Lifecycle
+  status      MeterStatus @default(ACTIVE)
+  installDate DateTime?
+  archiveDate DateTime?
+  archiveNote String?
 
+  // V5: Meter exchange chain (self-relation)
+  replacedById String? @unique
+  replacedBy   Meter?  @relation("MeterReplacement", fields: [replacedById], references: [id])
+  replaces     Meter?  @relation("MeterReplacement")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  property        Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  readings        MeterReading[]
+  settlementItems SettlementItem[] // V5
+
+  @@index([propertyId, status])
+  @@index([propertyId, type])
   @@map("meters")
 }
 
@@ -496,17 +529,226 @@ enum MeterType {
   HEATING
 }
 
+enum MeterStatus {
+  ACTIVE
+  ARCHIVED
+  DECOMMISSIONED
+}
+
 model MeterReading {
-  id          String   @id @default(uuid())
+  id          String           @id @default(uuid())
   meterId     String
   tenantId    String?
   value       Float
   readingDate DateTime
+  readingType MeterReadingType @default(REGULAR) // V5
   photoUrl    String?
-  createdAt   DateTime @default(now())
+  notes       String?                            // V5
+  createdAt   DateTime         @default(now())
 
   meter  Meter   @relation(fields: [meterId], references: [id], onDelete: Cascade)
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
+  @@index([meterId, readingDate(sort: Desc)])
+  @@index([readingType])
   @@map("meter_readings")
+}
+
+enum MeterReadingType {
+  REGULAR
+  INITIAL
+  FINAL
+  METER_EXCHANGE
+}
+
+// ============== V5: ФИКСИРОВАННЫЕ УСЛУГИ ==============
+
+model FixedUtility {
+  id          String           @id @default(uuid())
+  propertyId  String
+  type        FixedUtilityType
+  name        String
+  periodCost  Float
+  splitMethod CostSplitMethod  @default(BY_DAYS)
+  isPerPerson Boolean          @default(false)
+  isActive    Boolean          @default(true)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  property Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  items    SettlementItem[]
+
+  @@index([propertyId, isActive])
+  @@map("fixed_utilities")
+}
+
+enum FixedUtilityType {
+  INTERNET
+  GARBAGE
+  ADMIN_FEE
+  PARKING
+  TV_CABLE
+  SECURITY
+  ELEVATOR
+  OTHER
+}
+
+// ============== V5: ТАРИФЫ (история ставок) ==============
+
+model UtilityRate {
+  id            String    @id @default(uuid())
+  propertyId    String
+  meterType     MeterType
+  pricePerUnit  Float
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  source        String?
+  notes         String?
+  createdAt     DateTime  @default(now())
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, meterType, effectiveFrom(sort: Desc)])
+  @@map("utility_rates")
+}
+
+// ============== V5: РОЗЛІЧЕННЯ (Settlements) ==============
+
+model UtilitySettlement {
+  id             String           @id @default(uuid())
+  propertyId     String
+  createdById    String
+  periodStart    DateTime
+  periodEnd      DateTime
+  title          String?
+  approach       BillingApproach  @default(MONTHLY)
+  totalAmount    Float            @default(0)
+  invoiceNumber  String?
+  invoiceDate    DateTime?
+  invoiceFileUrl String?
+  status         SettlementStatus @default(DRAFT)
+  finalizedAt    DateTime?
+  voidedAt       DateTime?
+  voidReason     String?
+  notes          String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  property Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  items    SettlementItem[]
+  shares   SettlementShare[]
+
+  @@index([propertyId, periodStart(sort: Desc)])
+  @@index([status])
+  @@map("utility_settlements")
+}
+
+enum SettlementStatus {
+  DRAFT
+  CALCULATED
+  FINALIZED
+  VOIDED
+}
+
+enum BillingApproach {
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+  ADVANCE_PAYMENT
+}
+
+// ============== V5: ПОЗИЦИИ РОЗЛІЧЕННЯ ==============
+
+model SettlementItem {
+  id             String          @id @default(uuid())
+  settlementId   String
+  meterId        String?
+  fixedUtilityId String?
+  utilityLabel   String
+  unitLabel      String?
+  prevReading    Float?
+  currReading    Float?
+  consumption    Float?
+  snapshotRate   Float?          // Зафиксированная ставка на момент расчёта
+  periodCost     Float?
+  totalCost      Float
+  splitMethod    CostSplitMethod @default(BY_DAYS)
+  createdAt      DateTime        @default(now())
+
+  settlement   UtilitySettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  meter        Meter?            @relation(fields: [meterId], references: [id], onDelete: SetNull)
+  fixedUtility FixedUtility?     @relation(fields: [fixedUtilityId], references: [id], onDelete: SetNull)
+
+  @@index([settlementId])
+  @@map("settlement_items")
+}
+
+enum CostSplitMethod {
+  BY_DAYS
+  BY_PERSONS
+  EQUAL
+  MANUAL
+}
+
+// ============== V5: ДОЛЯ ЖИЛЬЦА ==============
+
+model SettlementShare {
+  id               String    @id @default(uuid())
+  settlementId     String
+  tenantId         String
+  activeDays       Int
+  totalDays        Int
+  shareRatio       Float
+  calculatedAmount Float
+  adjustedAmount   Float?
+  finalAmount      Float
+  advancesPaid     Float     @default(0)
+  balanceDue       Float     @default(0)
+  isPaid           Boolean   @default(false)
+  paidAt           DateTime?
+  paymentId        String?
+  notes            String?   // Видна жильцу
+  ownerNotes       String?   // Скрыта от жильца
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  settlement UtilitySettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  tenant     Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([settlementId, tenantId])
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([isPaid])
+  @@map("settlement_shares")
+}
+
+// ============== V5: КНИГА САЛЬДО ==============
+
+model TenantLedger {
+  id           String          @id @default(uuid())
+  tenantId     String
+  propertyId   String
+  entryType    LedgerEntryType
+  amount       Float           // positive = долг, negative = кредит
+  settlementId String?
+  paymentId    String?
+  description  String
+  balanceAfter Float           // running total
+  createdAt    DateTime        @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([propertyId, tenantId])
+  @@map("tenant_ledger")
+}
+
+enum LedgerEntryType {
+  CHARGE
+  ADVANCE_PAYMENT
+  PAYMENT
+  ADJUSTMENT
+  CARRY_FORWARD
 }
