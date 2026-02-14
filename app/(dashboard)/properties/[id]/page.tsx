@@ -1,4 +1,6 @@
 // app/(dashboard)/properties/[id]/page.tsx
+// Flatro — Property Detail Page
+// UPDATED: scrollable Contracts/Meters blocks + working Meters button
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -6,13 +8,18 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { 
   ArrowLeft, Home, MapPin, Loader2, Users, FileText, 
-  CreditCard, Edit, Trash2, SquareStack
+  CreditCard, Edit, Trash2, SquareStack, Zap, Flame, 
+  Droplets, Thermometer, BarChart3
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { InviteTenant } from '@/components/invite-tenant'
 import { useLocale } from '@/lib/i18n/context'
+
+// ============================================
+// Types
+// ============================================
 
 interface Property {
   id: string
@@ -56,6 +63,22 @@ interface Invitation {
   usedAt: string | null
 }
 
+// ============================================
+// Meter type config (PL labels + icons)
+// ============================================
+
+const METER_TYPE_CONFIG: Record<string, { label: string; icon: typeof Zap; color: string; bgColor: string }> = {
+  ELECTRICITY: { label: 'Prąd', icon: Zap, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
+  GAS:         { label: 'Gaz', icon: Flame, color: 'text-orange-600', bgColor: 'bg-orange-100' },
+  WATER_COLD:  { label: 'Woda zimna', icon: Droplets, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  WATER_HOT:   { label: 'Woda ciepła', icon: Droplets, color: 'text-red-500', bgColor: 'bg-red-100' },
+  HEATING:     { label: 'Ogrzewanie', icon: Thermometer, color: 'text-rose-600', bgColor: 'bg-rose-100' },
+}
+
+// ============================================
+// Main Component
+// ============================================
+
 export default function PropertyDetailPage() {
   const params = useParams()
   const router = useRouter()
@@ -97,15 +120,12 @@ export default function PropertyDetailPage() {
   }
 
   async function handleDelete() {
-    if (!confirm('Вы уверены что хотите удалить эту недвижимость? Все связанные данные будут удалены.')) {
+    if (!confirm('Вы уверены что хотите удалить эту недвижимость? Все связанные данные будут удалены.'))
       return
-    }
 
     setDeleting(true)
     try {
-      const res = await fetch(`/api/properties/${propertyId}`, {
-        method: 'DELETE'
-      })
+      const res = await fetch(`/api/properties/${propertyId}`, { method: 'DELETE' })
       if (res.ok) {
         router.push('/properties')
       }
@@ -114,12 +134,6 @@ export default function PropertyDetailPage() {
     } finally {
       setDeleting(false)
     }
-  }
-
-  const statusConfig = {
-    VACANT: { label: t.properties.status.vacant, color: 'bg-green-100 text-green-800' },
-    OCCUPIED: { label: t.properties.status.occupied, color: 'bg-blue-100 text-blue-800' },
-    RESERVED: { label: t.properties.status.reserved, color: 'bg-yellow-100 text-yellow-800' },
   }
 
   if (loading) {
@@ -133,48 +147,57 @@ export default function PropertyDetailPage() {
   if (!property) {
     return (
       <div className="text-center py-12">
-        <Home className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold mb-2">Недвижимость не найдена</h2>
+        <p className="text-gray-500">Объект не найден</p>
         <Link href="/properties">
-          <Button variant="outline">Вернуться к списку</Button>
-        </Link>
-      </div>
-    )
-  }
-
-  const status = statusConfig[property.status]
-  const activeTenants = property.tenants.filter(t => t.isActive)
-  const activeContract = property.contracts.find(c => c.status === 'ACTIVE')
-
-  return (
-    <div className="w-full max-w-4xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link href="/properties">
-          <Button variant="ghost" size="sm">
+          <Button variant="outline" className="mt-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {t.common.back}
           </Button>
         </Link>
       </div>
+    )
+  }
 
-      {/* Property Info Card */}
-      <Card className="p-6 mb-6">
-        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <Home className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h1 className="text-2xl font-bold text-gray-900">{property.name}</h1>
-                <Badge className={status.color}>{status.label}</Badge>
+  const statusConfig: Record<string, { label: string; color: string }> = {
+    VACANT:   { label: t.properties.status.vacant, color: 'bg-green-100 text-green-800' },
+    OCCUPIED: { label: t.properties.status.occupied, color: 'bg-blue-100 text-blue-800' },
+    RESERVED: { label: t.properties.status.reserved, color: 'bg-yellow-100 text-yellow-800' },
+  }
+
+  const status = statusConfig[property.status] || statusConfig.VACANT
+  const activeTenants = property.tenants.filter(t => t.isActive)
+  const activeContract = property.contracts.find(c => c.status === 'ACTIVE')
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {/* Back */}
+      <Link
+        href="/properties"
+        className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        {t.properties.title}
+      </Link>
+
+      {/* Header Card */}
+      <Card className="p-4 lg:p-6 mb-6">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Home className="h-6 w-6 text-blue-600" />
               </div>
-              <p className="text-gray-600 flex items-center gap-1">
-                <MapPin className="h-4 w-4" />
-                {property.address}, {property.city}
-                {property.postalCode && `, ${property.postalCode}`}
-              </p>
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <h1 className="text-2xl font-bold text-gray-900">{property.name}</h1>
+                  <Badge className={status.color}>{status.label}</Badge>
+                </div>
+                <p className="text-gray-600 flex items-center gap-1">
+                  <MapPin className="h-4 w-4" />
+                  {property.address}, {property.city}
+                  {property.postalCode && `, ${property.postalCode}`}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -237,8 +260,63 @@ export default function PropertyDetailPage() {
         )}
       </Card>
 
+      {/* Quick Navigation — Utilities module */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <Link href={`/properties/${property.id}/meters`}>
+          <Card className="p-3 hover:shadow-md transition-shadow cursor-pointer group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-yellow-100 rounded-lg group-hover:bg-yellow-200 transition-colors">
+                <SquareStack className="h-4 w-4 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Liczniki</p>
+                <p className="text-xs text-gray-400">{property.meters.length} szt.</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+        <Link href={`/properties/${property.id}/utilities`}>
+          <Card className="p-3 hover:shadow-md transition-shadow cursor-pointer group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200 transition-colors">
+                <CreditCard className="h-4 w-4 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Opłaty i taryfy</p>
+                <p className="text-xs text-gray-400">Stałe opłaty</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+        <Link href={`/properties/${property.id}/meters`}>
+          <Card className="p-3 hover:shadow-md transition-shadow cursor-pointer group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-green-100 rounded-lg group-hover:bg-green-200 transition-colors">
+                <BarChart3 className="h-4 w-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Odczyty</p>
+                <p className="text-xs text-gray-400">Podaj odczyt</p>
+              </div>
+            </div>
+          </Card>
+        </Link>
+        <Card className="p-3 opacity-50 cursor-default">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-purple-100 rounded-lg">
+              <FileText className="h-4 w-4 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">Rozliczenia</p>
+              <p className="text-xs text-gray-400">Wkrótce</p>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Two-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tenants */}
+        {/* ─── Tenants ──────────────────────────── */}
         <Card className="p-4 lg:p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
@@ -276,7 +354,7 @@ export default function PropertyDetailPage() {
           )}
         </Card>
 
-        {/* Invite Tenant */}
+        {/* ─── Invite Tenant ────────────────────── */}
         <InviteTenant
           propertyId={property.id}
           propertyName={property.name}
@@ -284,12 +362,17 @@ export default function PropertyDetailPage() {
           onInvitationCreated={fetchData}
         />
 
-        {/* Contracts */}
+        {/* ─── Contracts (SCROLLABLE) ───────────── */}
         <Card className="p-4 lg:p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
               <FileText className="h-5 w-5 text-purple-600" />
               {t.contracts.title}
+              {property.contracts.length > 0 && (
+                <span className="text-xs font-normal text-gray-400">
+                  ({property.contracts.length})
+                </span>
+              )}
             </h3>
             <Link href={`/contracts/new?propertyId=${property.id}`}>
               <Button size="sm" variant="outline">+ Добавить</Button>
@@ -297,20 +380,29 @@ export default function PropertyDetailPage() {
           </div>
 
           {property.contracts.length > 0 ? (
-            <div className="space-y-3">
+            <div className="max-h-[360px] overflow-y-auto pr-1 space-y-3 scrollbar-thin">
               {property.contracts.map((contract) => (
-                <div key={contract.id} className="p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center justify-between mb-1">
-                    <Badge variant="outline">{contract.type}</Badge>
-                    <Badge className={contract.status === 'ACTIVE' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>
-                      {contract.status}
-                    </Badge>
+                <Link key={contract.id} href={`/contracts/${contract.id}`}>
+                  <div className="p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+                    <div className="flex items-center justify-between mb-1">
+                      <Badge variant="outline">{contract.type}</Badge>
+                      <Badge className={
+                        contract.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
+                        contract.status === 'TERMINATED' ? 'bg-red-100 text-red-700' :
+                        contract.status === 'SIGNED' ? 'bg-blue-100 text-blue-800' :
+                        contract.status === 'PENDING_SIGNATURE' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-gray-100 text-gray-800'
+                      }>
+                        {contract.status}
+                      </Badge>
+                    </div>
+                    <p className="font-medium">{contract.rentAmount} {t.common.currency}/мес</p>
+                    <p className="text-sm text-gray-500">
+                      {new Date(contract.startDate).toLocaleDateString('pl-PL')} —{' '}
+                      {contract.endDate ? new Date(contract.endDate).toLocaleDateString('pl-PL') : 'бессрочно'}
+                    </p>
                   </div>
-                  <p className="font-medium">{contract.rentAmount} {t.common.currency}/мес</p>
-                  <p className="text-sm text-gray-500">
-                    {new Date(contract.startDate).toLocaleDateString()} — {contract.endDate ? new Date(contract.endDate).toLocaleDateString() : 'бессрочно'}
-                  </p>
-                </div>
+                </Link>
               ))}
             </div>
           ) : (
@@ -318,27 +410,45 @@ export default function PropertyDetailPage() {
           )}
         </Card>
 
-        {/* Meters */}
+        {/* ─── Meters (SCROLLABLE + WORKING BUTTON) ─── */}
         <Card className="p-4 lg:p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-semibold flex items-center gap-2">
               <SquareStack className="h-5 w-5 text-yellow-600" />
               Счётчики
+              {property.meters.length > 0 && (
+                <span className="text-xs font-normal text-gray-400">
+                  ({property.meters.length})
+                </span>
+              )}
             </h3>
-            <Button size="sm" variant="outline">+ Добавить</Button>
+            <Link href={`/properties/${property.id}/meters`}>
+              <Button size="sm" variant="outline">+ Добавить</Button>
+            </Link>
           </div>
 
           {property.meters.length > 0 ? (
-            <div className="space-y-2">
-              {property.meters.map((meter) => (
-                <div key={meter.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium">{meter.type}</p>
-                    {meter.meterNumber && <p className="text-sm text-gray-500">№ {meter.meterNumber}</p>}
+            <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2 scrollbar-thin">
+              {property.meters.map((meter) => {
+                const cfg = METER_TYPE_CONFIG[meter.type]
+                const MeterIcon = cfg?.icon || SquareStack
+                return (
+                  <div key={meter.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-lg ${cfg?.bgColor || 'bg-gray-100'}`}>
+                        <MeterIcon className={`h-4 w-4 ${cfg?.color || 'text-gray-600'}`} />
+                      </div>
+                      <div>
+                        <p className="font-medium">{cfg?.label || meter.type}</p>
+                        {meter.meterNumber && <p className="text-sm text-gray-500">№ {meter.meterNumber}</p>}
+                      </div>
+                    </div>
+                    <Link href={`/properties/${property.id}/meters`}>
+                      <Button size="sm" variant="ghost">Показания</Button>
+                    </Link>
                   </div>
-                  <Button size="sm" variant="ghost">Показания</Button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           ) : (
             <p className="text-gray-500 text-sm">Нет счётчиков</p>
