@@ -4,10 +4,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import {
-  Home, Users, Building2, CreditCard, FileText, Settings, Gauge,
-  Menu, X, LogOut, Loader2, MessageSquare, AlertTriangle, ArrowRightLeft
-} from 'lucide-react'
+import { Home, Users, CreditCard, MessageSquare, AlertTriangle, Settings, Building2,
+     Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft, Wallet, SquareStack }
+      from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
@@ -76,6 +75,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const tenantNavItems = [
     { href: '/tenant/dashboard', icon: Home, label: 'Моё жильё' },
+    { href: '/tenant/meters', icon: SquareStack, label: 'Liczniki' },
+    { href: '/tenant/balance', icon: Wallet, label: 'Moje media' },
     { href: '/tenant/contracts', icon: FileText, label: 'Umowy' },
     { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
     { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },

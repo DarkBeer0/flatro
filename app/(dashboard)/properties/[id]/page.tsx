@@ -301,17 +301,19 @@ export default function PropertyDetailPage() {
             </div>
           </Card>
         </Link>
-        <Card className="p-3 opacity-50 cursor-default">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <FileText className="h-4 w-4 text-purple-600" />
+        <Link href={`/properties/${property.id}/settlements`}>
+          <Card className="p-3 hover:shadow-md transition-shadow cursor-pointer group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200 transition-colors">
+                <FileText className="h-4 w-4 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-900">Rozliczenia</p>
+                <p className="text-xs text-gray-400">Rozlicz media</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-medium text-gray-900">Rozliczenia</p>
-              <p className="text-xs text-gray-400">Wkrótce</p>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </Link>
       </div>
 
       {/* Two-column grid */}

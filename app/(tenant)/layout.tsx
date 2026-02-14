@@ -4,10 +4,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import {
-  Home, Users, CreditCard, MessageSquare, AlertTriangle, Settings, Building2,
-  Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft
-} from 'lucide-react'
+import { Home, Users, CreditCard, MessageSquare, AlertTriangle, Settings, Building2,
+     Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft, Wallet, SquareStack }
+      from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
 import { createClient } from '@/lib/supabase/client'
