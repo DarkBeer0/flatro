@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/lib/i18n/context'
-
+import { translateInviteError } from '@/lib/i18n/invite-errors'
 interface Payment {
   id: string
   amount: number

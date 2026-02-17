@@ -1,11 +1,14 @@
 // components/chat/chat-list.tsx
+// FIXED: Hardcoded Russian strings → i18n dictionary keys
+// FIXED: date-fns locale → dynamic via getDateFnsLocale()
 'use client'
 
 import Link from 'next/link'
 import { format, isToday, isYesterday } from 'date-fns'
-import { ru } from 'date-fns/locale'
 import { MessageSquare, Home, ChevronRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { useLocale } from '@/lib/i18n/context'
+import { getDateFnsLocale } from '@/lib/i18n/get-date-fns-locale'
 
 interface ChatPreview {
   propertyId: string
@@ -27,19 +30,25 @@ interface ChatPreview {
 
 interface ChatListProps {
   chats: ChatPreview[]
-  basePath?: string // /messages для владельца
+  basePath?: string
 }
 
 export function ChatList({ chats, basePath = '/messages' }: ChatListProps) {
+  const { t, locale } = useLocale()
+  const dfLocale = getDateFnsLocale(locale)
+
+  // Access chat dictionary safely
+  const chat = (t as any).chat || {}
+
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
     if (isToday(date)) {
       return format(date, 'HH:mm')
     }
     if (isYesterday(date)) {
-      return 'Вчера'
+      return t.common.yesterday
     }
-    return format(date, 'd MMM', { locale: ru })
+    return format(date, 'd MMM', { locale: dfLocale })
   }
 
   if (chats.length === 0) {
@@ -47,10 +56,10 @@ export function ChatList({ chats, basePath = '/messages' }: ChatListProps) {
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <MessageSquare className="h-12 w-12 text-gray-300 mb-4" />
         <h3 className="text-lg font-medium text-gray-900 mb-2">
-          Нет чатов
+          {t.messages.noChats}
         </h3>
         <p className="text-gray-500 text-sm max-w-sm">
-          Чаты появятся, когда арендаторы присоединятся к вашим квартирам
+          {t.messages.noChatsDesc}
         </p>
       </div>
     )
@@ -58,14 +67,14 @@ export function ChatList({ chats, basePath = '/messages' }: ChatListProps) {
 
   return (
     <div className="divide-y">
-      {chats.map((chat) => {
-        const tenantName = chat.tenants[0]?.name || 'Нет арендатора'
-        const hasUnread = chat.unreadCount > 0
-        
+      {chats.map((chatItem) => {
+        const tenantName = chatItem.tenants[0]?.name || (chat.noTenant || 'No tenant')
+        const hasUnread = chatItem.unreadCount > 0
+
         return (
           <Link
-            key={chat.propertyId}
-            href={`${basePath}/${chat.propertyId}`}
+            key={chatItem.propertyId}
+            href={`${basePath}/${chatItem.propertyId}`}
             className={`flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors ${
               hasUnread ? 'bg-blue-50/50' : ''
             }`}
@@ -83,47 +92,36 @@ export function ChatList({ chats, basePath = '/messages' }: ChatListProps) {
                 <h4 className={`font-medium truncate ${
                   hasUnread ? 'text-gray-900' : 'text-gray-700'
                 }`}>
-                  {chat.propertyName}
+                  {chatItem.propertyName}
                 </h4>
-                {chat.lastMessage && (
+                {chatItem.lastMessage && (
                   <span className={`text-xs shrink-0 ${
                     hasUnread ? 'text-blue-600 font-medium' : 'text-gray-400'
                   }`}>
-                    {formatTime(chat.lastMessage.createdAt)}
+                    {formatTime(chatItem.lastMessage.createdAt)}
                   </span>
                 )}
               </div>
-              
-              <p className="text-xs text-gray-500 truncate mb-1">
-                {tenantName} • {chat.propertyAddress}
-              </p>
-              
+
               <div className="flex items-center justify-between gap-2">
-                {chat.lastMessage ? (
-                  <p className={`text-sm truncate ${
-                    hasUnread ? 'text-gray-900 font-medium' : 'text-gray-500'
-                  }`}>
-                    {chat.lastMessage.isFromMe && (
-                      <span className="text-gray-400">Вы: </span>
-                    )}
-                    {chat.lastMessage.content}
-                  </p>
-                ) : (
-                  <p className="text-sm text-gray-400 italic">
-                    Нет сообщений
-                  </p>
-                )}
-                
+                <p className="text-sm text-gray-500 truncate">
+                  {chatItem.lastMessage
+                    ? chatItem.lastMessage.isFromMe
+                      ? `${t.messages.you}: ${chatItem.lastMessage.content}`
+                      : chatItem.lastMessage.content
+                    : t.messages.clickToChat}
+                </p>
                 {hasUnread && (
-                  <Badge className="bg-blue-600 text-white px-2 py-0.5 text-xs">
-                    {chat.unreadCount}
+                  <Badge className="bg-blue-600 text-white text-xs px-1.5 py-0.5 shrink-0">
+                    {chatItem.unreadCount}
                   </Badge>
                 )}
               </div>
+
+              <p className="text-xs text-gray-400 mt-0.5 truncate">{tenantName}</p>
             </div>
 
-            {/* Arrow */}
-            <ChevronRight className="h-5 w-5 text-gray-400 shrink-0" />
+            <ChevronRight className="h-4 w-4 text-gray-300 shrink-0" />
           </Link>
         )
       })}

@@ -1,11 +1,12 @@
 // components/chat/message-input.tsx
 // UPDATED: Added image attachment support via ChatAttachmentInput
-// FIX: Adds ability to send images/photos in messages
+// FIXED: All hardcoded Polish/Russian strings → i18n dictionary keys
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, ImagePlus, Camera, X, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useLocale } from '@/lib/i18n/context'
 
 interface AttachmentData {
   path: string
@@ -23,15 +24,21 @@ interface MessageInputProps {
   onSend: (content: string, attachment?: AttachmentData) => Promise<void> | void
   disabled?: boolean
   placeholder?: string
-  propertyId?: string // required for attachment uploads
+  propertyId?: string
 }
 
 export function MessageInput({
   onSend,
   disabled = false,
-  placeholder = 'Введите сообщение...',
+  placeholder,
   propertyId,
 }: MessageInputProps) {
+  const { t } = useLocale()
+  const chatDict = (t as any).chat || {}
+
+  // Resolve placeholder: prop > dictionary > fallback
+  const resolvedPlaceholder = placeholder || t.messages.typeMessage
+
   const [message, setMessage] = useState('')
   const [attachment, setAttachment] = useState<AttachmentData | null>(null)
   const [preview, setPreview] = useState<AttachmentPreview | null>(null)
@@ -79,13 +86,13 @@ export function MessageInput({
 
       // Validate size
       if (file.size > MAX_SIZE) {
-        setUploadError('Plik jest za duży. Maks. 5 MB')
+        setUploadError(chatDict.fileTooLarge || 'File is too large. Max 5 MB')
         return
       }
 
       // Validate type
       if (!file.type.startsWith('image/')) {
-        setUploadError('Dozwolone tylko zdjęcia')
+        setUploadError(chatDict.onlyPhotos || 'Only photos are allowed')
         return
       }
 
@@ -96,7 +103,7 @@ export function MessageInput({
 
       // Upload immediately
       if (!propertyId) {
-        setUploadError('Brak identyfikatora nieruchomości')
+        setUploadError(chatDict.noPropertyId || 'Missing property ID')
         return
       }
 
@@ -114,7 +121,7 @@ export function MessageInput({
 
         if (!res.ok) {
           const data = await res.json()
-          throw new Error(data.error || 'Błąd przesyłania')
+          throw new Error(data.error || (chatDict.uploadError || 'Upload failed'))
         }
 
         const data = await res.json()
@@ -129,7 +136,7 @@ export function MessageInput({
           },
         })
       } catch (err) {
-        setUploadError(err instanceof Error ? err.message : 'Błąd przesyłania')
+        setUploadError(err instanceof Error ? err.message : (chatDict.uploadError || 'Upload failed'))
         removePreview()
       } finally {
         setUploading(false)
@@ -138,7 +145,7 @@ export function MessageInput({
       // Reset input
       e.target.value = ''
     },
-    [propertyId]
+    [propertyId, chatDict]
   )
 
   const removePreview = useCallback(() => {
@@ -154,19 +161,15 @@ export function MessageInput({
     const trimmed = message.trim()
     const hasAttachment = !!attachment
 
-    // Need at least text or attachment
     if (!trimmed && !hasAttachment) return
     if (disabled || uploading) return
 
-    // Clear state immediately
     setMessage('')
     const currentAttachment = attachment
     removePreview()
 
-    // Return focus
     textareaRef.current?.focus()
 
-    // Send in background
     Promise.resolve(onSend(trimmed, currentAttachment || undefined)).catch((err) => {
       console.error('Failed to send message:', err)
     })
@@ -219,7 +222,7 @@ export function MessageInput({
           <div className="relative w-14 h-14 rounded-md overflow-hidden flex-shrink-0 bg-gray-200">
             <img
               src={preview.previewUrl}
-              alt="Podgląd"
+              alt={chatDict.photo || 'Photo'}
               className="w-full h-full object-cover"
             />
             {uploading && (
@@ -235,10 +238,7 @@ export function MessageInput({
               {preview.width ? ` · ${preview.width}×${preview.height}` : ''}
             </p>
             {uploading && (
-              <p className="text-xs text-blue-600">Przesyłanie...</p>
-            )}
-            {attachment && !uploading && (
-              <p className="text-xs text-green-600">Gotowe</p>
+              <p className="text-xs text-blue-600">{t.common.loading}</p>
             )}
           </div>
           <button
@@ -263,7 +263,6 @@ export function MessageInput({
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || uploading}
               className="text-gray-400 hover:text-blue-600 p-2 h-9 w-9"
-              title="Dodaj zdjęcie"
             >
               <ImagePlus className="h-5 w-5" />
             </Button>
@@ -274,7 +273,6 @@ export function MessageInput({
               onClick={() => cameraInputRef.current?.click()}
               disabled={disabled || uploading}
               className="text-gray-400 hover:text-blue-600 p-2 h-9 w-9 sm:hidden"
-              title="Zrób zdjęcie"
             >
               <Camera className="h-5 w-5" />
             </Button>
@@ -287,7 +285,7 @@ export function MessageInput({
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder={resolvedPlaceholder}
           disabled={disabled}
           rows={1}
           className="flex-1 resize-none rounded-full border border-gray-300 px-4 py-2.5 text-sm 
@@ -308,9 +306,6 @@ export function MessageInput({
           <Send className="h-5 w-5" />
         </button>
       </div>
-      <p className="text-xs text-gray-400 text-center mt-2">
-        Enter — отправить, Shift+Enter — новая строка
-      </p>
     </div>
   )
 }

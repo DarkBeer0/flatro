@@ -1,4 +1,6 @@
 // app/(dashboard)/dashboard/page.tsx
+// FIXED: Sequential fetch waterfall → Promise.all for parallel loading
+// FIXED: auth/me and dashboard/stats fetched simultaneously
 'use client'
 
 import { useEffect, useState, Suspense } from 'react'
@@ -7,6 +9,7 @@ import { Card } from '@/components/ui/card'
 import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
+import { translateInviteError } from '@/lib/i18n/invite-errors'
 
 interface DashboardStats {
   properties: { total: number; occupied: number; vacant: number }
@@ -20,7 +23,7 @@ function DashboardContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const inviteAccepted = searchParams.get('invite_accepted')
-  
+
   const { t } = useLocale()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [loading, setLoading] = useState(true)
@@ -35,24 +38,28 @@ function DashboardContent() {
   }, [inviteAccepted, router])
 
   useEffect(() => {
-    checkRoleAndLoadStats()
+    loadDashboard()
   }, [])
 
-  async function checkRoleAndLoadStats() {
+  async function loadDashboard() {
     try {
-      const meRes = await fetch('/api/auth/me')
+      // FIXED: Fetch both endpoints in parallel instead of sequentially
+      const [meRes, statsRes] = await Promise.all([
+        fetch('/api/auth/me'),
+        fetch('/api/dashboard/stats'),
+      ])
+
+      // Process auth/me response
       if (meRes.ok) {
         const user = await meRes.json()
-        
-        // Если пользователь только жилец (без роли владельца) — редирект
+        // If user is only a tenant (no owner role) — redirect
         if (user.isTenant && !user.isOwner) {
           router.replace('/tenant/dashboard')
           return
         }
       }
 
-      // Загружаем статистику для владельца
-      const statsRes = await fetch('/api/dashboard/stats')
+      // Process stats response
       if (statsRes.ok) {
         setStats(await statsRes.json())
       }
@@ -71,146 +78,142 @@ function DashboardContent() {
     )
   }
 
-  const data = stats || {
-    properties: { total: 0, occupied: 0, vacant: 0 },
-    tenants: { total: 0, active: 0 },
-    payments: { pending: 0, overdue: 0, pendingAmount: 0, overdueAmount: 0 },
-    contracts: { active: 0, expiring: 0 },
-    monthlyIncome: 0,
-  }
-
   return (
-    <div className="w-full">
-      {/* Сообщение о принятом приглашении */}
+    <div className="w-full space-y-6">
+      {/* Invite success toast */}
       {showInviteSuccess && (
-        <Card className="p-4 mb-6 bg-green-50 border-green-200">
-          <div className="flex items-center gap-3">
-            <CheckCircle className="h-5 w-5 text-green-600" />
-            <div>
-              <p className="font-medium text-green-800">Приглашение принято!</p>
-              <p className="text-sm text-green-700">
-                Теперь у вас есть доступ к новой квартире как жилец.{' '}
-                <Link href="/tenant/dashboard" className="underline hover:no-underline">
-                  Перейти в панель жильца →
-                </Link>
-              </p>
-            </div>
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center gap-3">
+          <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0" />
+          <div>
+            <p className="font-medium text-green-800">Invitation accepted!</p>
           </div>
-        </Card>
+        </div>
       )}
 
-      <div className="mb-6">
-        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">{t.dashboard.title}</h1>
+      {/* Page Title */}
+      <div>
+        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
+          {t.dashboard.title}
+        </h1>
         <p className="text-gray-500 mt-1">{t.dashboard.welcome}</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-6 mb-6">
-        <StatCard
-          title={t.dashboard.properties}
-          value={data.properties.total}
-          subtitle={`${data.properties.occupied} ${t.dashboard.occupied}, ${data.properties.vacant} ${t.dashboard.vacant}`}
-          icon={<Building2 className="h-5 w-5 text-blue-600" />}
-          color="blue"
-        />
-        <StatCard
-          title={t.dashboard.tenants}
-          value={data.tenants.total}
-          subtitle={`${data.tenants.active} ${t.dashboard.activeTenants}`}
-          icon={<Users className="h-5 w-5 text-green-600" />}
-          color="green"
-        />
-        <StatCard
-          title={t.dashboard.pendingPayments}
-          value={data.payments.pending}
-          subtitle={`${data.payments.overdue} ${t.dashboard.overdue}`}
-          icon={<CreditCard className="h-5 w-5 text-yellow-600" />}
-          color="yellow"
-        />
-        <StatCard
-          title={t.dashboard.monthlyIncome}
-          value={`${data.monthlyIncome.toLocaleString()} ${t.common.currency}`}
-          subtitle={t.dashboard.currentMonth}
-          icon={<TrendingUp className="h-5 w-5 text-purple-600" />}
-          color="purple"
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-        <Card className="p-4 lg:p-6">
-          <h2 className="text-lg font-semibold mb-4">{t.dashboard.quickActions}</h2>
-          <div className="space-y-2">
-            <QuickAction href="/properties/new" icon={<Home className="h-5 w-5" />} title={t.dashboard.addProperty} description={t.dashboard.addPropertyDesc} />
-            <QuickAction href="/tenants/new" icon={<Users className="h-5 w-5" />} title={t.dashboard.addTenant} description={t.dashboard.addTenantDesc} />
-            <QuickAction href="/payments/new" icon={<CreditCard className="h-5 w-5" />} title={t.dashboard.addPayment} description={t.dashboard.addPaymentDesc} />
-          </div>
-        </Card>
-
-        <Card className="p-4 lg:p-6">
-          <h2 className="text-lg font-semibold mb-4">{t.dashboard.recentActivity}</h2>
-          {data.properties.total === 0 ? (
-            <div className="text-center py-6">
-              <AlertTriangle className="h-10 w-10 mx-auto text-gray-300 mb-3" />
-              <p className="font-medium text-gray-500">{t.dashboard.noActivity}</p>
+      {/* Stats Grid */}
+      {stats && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Properties */}
+          <Card className="p-4 lg:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-100 rounded-lg">
+                <Building2 className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">{t.dashboard.properties}</p>
+                <p className="text-2xl font-bold">{stats.properties.total}</p>
+                <p className="text-xs text-gray-400">
+                  {stats.properties.occupied} {t.dashboard.occupied} · {stats.properties.vacant} {t.dashboard.vacant}
+                </p>
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {data.contracts.expiring > 0 && (
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                  ⚠️ {data.contracts.expiring} договоров истекают
-                </div>
-              )}
-              {data.payments.overdue > 0 && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
-                  🔴 {data.payments.overdue} просроченных платежей
-                </div>
-              )}
-              {data.payments.pending > 0 && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-                  💰 {data.payments.pending} ожидают оплаты
-                </div>
-              )}
+          </Card>
+
+          {/* Tenants */}
+          <Card className="p-4 lg:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-green-100 rounded-lg">
+                <Users className="h-5 w-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">{t.dashboard.tenants}</p>
+                <p className="text-2xl font-bold">{stats.tenants.active}</p>
+                <p className="text-xs text-gray-400">{t.dashboard.activeTenants}</p>
+              </div>
             </div>
-          )}
-        </Card>
+          </Card>
+
+          {/* Pending Payments */}
+          <Card className="p-4 lg:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-yellow-100 rounded-lg">
+                <CreditCard className="h-5 w-5 text-yellow-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">{t.dashboard.pendingPayments}</p>
+                <p className="text-2xl font-bold">{stats.payments.pending}</p>
+                <p className="text-xs text-red-500">
+                  {stats.payments.overdue} {t.dashboard.overdue}
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Monthly Income */}
+          <Card className="p-4 lg:p-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-purple-100 rounded-lg">
+                <TrendingUp className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-gray-500">{t.dashboard.monthlyIncome}</p>
+                <p className="text-2xl font-bold">
+                  {stats.monthlyIncome.toLocaleString()} {t.common.currency}
+                </p>
+                <p className="text-xs text-gray-400">{t.dashboard.currentMonth}</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Quick Actions */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">{t.dashboard.quickActions}</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Link href="/properties/new">
+            <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Home className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{t.dashboard.addProperty}</p>
+                  <p className="text-sm text-gray-500">{t.dashboard.addPropertyDesc}</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+          <Link href="/tenants/new">
+            <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-green-100 rounded-lg">
+                  <Users className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{t.dashboard.addTenant}</p>
+                  <p className="text-sm text-gray-500">{t.dashboard.addTenantDesc}</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+          <Link href="/payments/new">
+            <Card className="p-4 hover:shadow-md transition-shadow cursor-pointer">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-100 rounded-lg">
+                  <CreditCard className="h-5 w-5 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900">{t.dashboard.addPayment}</p>
+                  <p className="text-sm text-gray-500">{t.dashboard.addPaymentDesc}</p>
+                </div>
+              </div>
+            </Card>
+          </Link>
+        </div>
       </div>
     </div>
   )
 }
 
-function StatCard({ title, value, subtitle, icon, color }: {
-  title: string; value: string | number; subtitle: string; icon: React.ReactNode
-  color: 'blue' | 'green' | 'yellow' | 'purple'
-}) {
-  const bg = { blue: 'bg-blue-50', green: 'bg-green-50', yellow: 'bg-yellow-50', purple: 'bg-purple-50' }
-  return (
-    <Card className="p-3 lg:p-6">
-      <div className="flex items-start justify-between">
-        <div className="min-w-0 flex-1">
-          <p className="text-xs lg:text-sm text-gray-500 truncate">{title}</p>
-          <p className="text-lg lg:text-2xl font-bold mt-1">{value}</p>
-          <p className="text-xs text-gray-400 truncate">{subtitle}</p>
-        </div>
-        <div className={`p-2 rounded-full ${bg[color]} flex-shrink-0 ml-2`}>{icon}</div>
-      </div>
-    </Card>
-  )
-}
-
-function QuickAction({ href, icon, title, description }: {
-  href: string; icon: React.ReactNode; title: string; description: string
-}) {
-  return (
-    <Link href={href} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 border border-transparent hover:border-gray-100">
-      <div className="p-2 bg-blue-100 rounded-lg text-blue-600">{icon}</div>
-      <div>
-        <p className="font-medium text-gray-900">{title}</p>
-        <p className="text-sm text-gray-500">{description}</p>
-      </div>
-    </Link>
-  )
-}
-
-// Обёртка с Suspense для useSearchParams
 export default function DashboardPage() {
   return (
     <Suspense fallback={

@@ -228,6 +228,68 @@ export interface Dictionary {
     continueWithGoogle: string
     orDivider: string
   }
+  invite: {
+    // Page states
+    loadingInvitation: string
+    errorTitle: string
+    goToLogin: string
+    checkEmail: string
+    checkEmailDesc: string
+    checkEmailNote: string
+    connectionError: string
+    invalidInvitationData: string
+    // Error codes from API
+    notFound: string
+    expired: string
+    alreadyUsed: string
+    loadError: string
+    activationError: string
+    // Invite info card
+    invitedTo: string
+    owner: string
+    address: string
+    // Register form
+    createAccount: string
+    loginToAccount: string
+    loginAndAccept: string
+    alreadyHaveAccount: string
+    createNewAccount: string
+    continueWithGoogle: string
+    orDivider: string
+    // Validation
+    firstNameMin: string
+    lastNameMin: string
+    passwordsMismatch: string
+    termsRequired: string
+    emailAlreadyRegistered: string
+    wrongCredentials: string
+    // Complete invite form
+    completeRegistration: string
+    completeDescription: string
+    firstNameRequired: string
+    firstNameMinLength: string
+    firstNameLettersOnly: string
+    lastNameRequired: string
+    lastNameMinLength: string
+    lastNameLettersOnly: string
+    phoneInvalid: string
+    nationalIdInvalid: string
+    termsAndPrivacyRequired: string
+    successTitle: string
+    successDescription: string
+    savingError: string
+    genericError: string
+  }
+  chat: {
+    noTenant: string
+    photo: string
+    loadError: string
+    sendError: string
+    fileTooLarge: string
+    onlyPhotos: string
+    uploadError: string
+    noPropertyId: string
+  }
 }
 
 export function getDictionary(locale: Locale): Dictionary {
@@ -451,6 +513,62 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Продолжить с Google',
       orDivider: 'или',
     },
+    invite: {
+      loadingInvitation: 'Загрузка приглашения...',
+      errorTitle: 'Ошибка',
+      goToLogin: 'Перейти на страницу входа',
+      checkEmail: 'Проверьте почту',
+      checkEmailDesc: 'Мы отправили письмо на {email}. Перейдите по ссылке для подтверждения.',
+      checkEmailNote: 'После подтверждения вы сможете войти и принять приглашение.',
+      connectionError: 'Ошибка соединения',
+      invalidInvitationData: 'Некорректные данные приглашения',
+      notFound: 'Приглашение не найдено',
+      expired: 'Срок действия приглашения истёк',
+      alreadyUsed: 'Это приглашение уже использовано',
+      loadError: 'Ошибка загрузки приглашения',
+      activationError: 'Ошибка активации',
+      invitedTo: 'Вас пригласили в',
+      owner: 'Владелец',
+      address: 'Адрес',
+      createAccount: 'Создайте аккаунт',
+      loginToAccount: 'Войдите в аккаунт',
+      loginAndAccept: 'Войти и принять',
+      alreadyHaveAccount: 'Уже есть аккаунт? Войти',
+      createNewAccount: 'Создать новый аккаунт',
+      continueWithGoogle: 'Продолжить с Google',
+      orDivider: 'или',
+      firstNameMin: 'Имя должно содержать минимум 2 символа',
+      lastNameMin: 'Фамилия должна содержать минимум 2 символа',
+      passwordsMismatch: 'Пароли не совпадают',
+      termsRequired: 'Необходимо принять пользовательское соглашение для продолжения',
+      emailAlreadyRegistered: 'Этот email уже зарегистрирован.',
+      wrongCredentials: 'Неверный email или пароль',
+      completeRegistration: 'Завершение регистрации',
+      completeDescription: 'Заполните данные для завершения регистрации',
+      firstNameRequired: 'Имя обязательно для заполнения',
+      firstNameMinLength: 'Имя должно содержать минимум 2 символа',
+      firstNameLettersOnly: 'Имя может содержать только буквы',
+      lastNameRequired: 'Фамилия обязательна для заполнения',
+      lastNameMinLength: 'Фамилия должна содержать минимум 2 символа',
+      lastNameLettersOnly: 'Фамилия может содержать только буквы',
+      phoneInvalid: 'Введите корректный номер телефона ({format})',
+      nationalIdInvalid: 'Введите корректный {label}',
+      termsAndPrivacyRequired: 'Необходимо принять пользовательское соглашение и политику конфиденциальности',
+      successTitle: 'Регистрация завершена!',
+      successDescription: 'Перенаправляем в личный кабинет...',
+      savingError: 'Ошибка при сохранении данных',
+      genericError: 'Произошла ошибка. Попробуйте ещё раз.',
+    },
+    chat: {
+      noTenant: 'Нет арендатора',
+      photo: 'Фото',
+      loadError: 'Ошибка загрузки сообщений',
+      sendError: 'Ошибка отправки',
+      fileTooLarge: 'Файл слишком большой. Макс. 5 МБ',
+      onlyPhotos: 'Допускаются только фотографии',
+      uploadError: 'Ошибка загрузки',
+      noPropertyId: 'Отсутствует идентификатор недвижимости',
+    }
   },
 
   // POLISH
@@ -668,6 +786,62 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Kontynuuj z Google',
       orDivider: 'lub',
     },
+    invite: {
+      loadingInvitation: 'Ładowanie zaproszenia...',
+      errorTitle: 'Błąd',
+      goToLogin: 'Przejdź do logowania',
+      checkEmail: 'Sprawdź pocztę',
+      checkEmailDesc: 'Wysłaliśmy email na {email}. Kliknij link, aby potwierdzić.',
+      checkEmailNote: 'Po potwierdzeniu będziesz mógł zalogować się i przyjąć zaproszenie.',
+      connectionError: 'Błąd połączenia',
+      invalidInvitationData: 'Nieprawidłowe dane zaproszenia',
+      notFound: 'Zaproszenie nie znalezione',
+      expired: 'Zaproszenie wygasło',
+      alreadyUsed: 'To zaproszenie zostało już wykorzystane',
+      loadError: 'Błąd ładowania zaproszenia',
+      activationError: 'Błąd aktywacji',
+      invitedTo: 'Zostałeś zaproszony do',
+      owner: 'Właściciel',
+      address: 'Adres',
+      createAccount: 'Utwórz konto',
+      loginToAccount: 'Zaloguj się',
+      loginAndAccept: 'Zaloguj i zaakceptuj',
+      alreadyHaveAccount: 'Masz już konto? Zaloguj się',
+      createNewAccount: 'Utwórz nowe konto',
+      continueWithGoogle: 'Kontynuuj z Google',
+      orDivider: 'lub',
+      firstNameMin: 'Imię musi zawierać co najmniej 2 znaki',
+      lastNameMin: 'Nazwisko musi zawierać co najmniej 2 znaki',
+      passwordsMismatch: 'Hasła nie są identyczne',
+      termsRequired: 'Należy zaakceptować regulamin, aby kontynuować',
+      emailAlreadyRegistered: 'Ten email jest już zarejestrowany.',
+      wrongCredentials: 'Nieprawidłowy email lub hasło',
+      completeRegistration: 'Dokończenie rejestracji',
+      completeDescription: 'Uzupełnij dane, aby dokończyć rejestrację',
+      firstNameRequired: 'Imię jest wymagane',
+      firstNameMinLength: 'Imię musi mieć co najmniej 2 znaki',
+      firstNameLettersOnly: 'Imię może zawierać tylko litery',
+      lastNameRequired: 'Nazwisko jest wymagane',
+      lastNameMinLength: 'Nazwisko musi mieć co najmniej 2 znaki',
+      lastNameLettersOnly: 'Nazwisko może zawierać tylko litery',
+      phoneInvalid: 'Podaj prawidłowy numer telefonu ({format})',
+      nationalIdInvalid: 'Podaj prawidłowy {label}',
+      termsAndPrivacyRequired: 'Należy zaakceptować regulamin i politykę prywatności',
+      successTitle: 'Rejestracja zakończona!',
+      successDescription: 'Przekierowywanie do panelu...',
+      savingError: 'Błąd podczas zapisywania danych',
+      genericError: 'Wystąpił błąd. Spróbuj ponownie.',
+    },
+    chat: {
+      noTenant: 'Brak najemcy',
+      photo: 'Zdjęcie',
+      loadError: 'Błąd ładowania wiadomości',
+      sendError: 'Błąd wysyłania',
+      fileTooLarge: 'Plik jest za duży. Maks. 5 MB',
+      onlyPhotos: 'Dozwolone tylko zdjęcia',
+      uploadError: 'Błąd przesyłania',
+      noPropertyId: 'Brak identyfikatora nieruchomości',
+    }
   },
 
   // ENGLISH
@@ -885,6 +1059,62 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Continue with Google',
       orDivider: 'or',
     },
+    invite: {
+      loadingInvitation: 'Loading invitation...',
+      errorTitle: 'Error',
+      goToLogin: 'Go to login page',
+      checkEmail: 'Check your email',
+      checkEmailDesc: 'We sent an email to {email}. Click the link to confirm.',
+      checkEmailNote: 'After confirmation you can log in and accept the invitation.',
+      connectionError: 'Connection error',
+      invalidInvitationData: 'Invalid invitation data',
+      notFound: 'Invitation not found',
+      expired: 'Invitation has expired',
+      alreadyUsed: 'This invitation has already been used',
+      loadError: 'Failed to load invitation',
+      activationError: 'Activation failed',
+      invitedTo: 'You have been invited to',
+      owner: 'Owner',
+      address: 'Address',
+      createAccount: 'Create account',
+      loginToAccount: 'Log in to your account',
+      loginAndAccept: 'Log in & accept',
+      alreadyHaveAccount: 'Already have an account? Log in',
+      createNewAccount: 'Create a new account',
+      continueWithGoogle: 'Continue with Google',
+      orDivider: 'or',
+      firstNameMin: 'First name must be at least 2 characters',
+      lastNameMin: 'Last name must be at least 2 characters',
+      passwordsMismatch: 'Passwords do not match',
+      termsRequired: 'You must accept the terms to continue',
+      emailAlreadyRegistered: 'This email is already registered.',
+      wrongCredentials: 'Invalid email or password',
+      completeRegistration: 'Complete registration',
+      completeDescription: 'Fill in your details to finish registration',
+      firstNameRequired: 'First name is required',
+      firstNameMinLength: 'First name must be at least 2 characters',
+      firstNameLettersOnly: 'First name may only contain letters',
+      lastNameRequired: 'Last name is required',
+      lastNameMinLength: 'Last name must be at least 2 characters',
+      lastNameLettersOnly: 'Last name may only contain letters',
+      phoneInvalid: 'Enter a valid phone number ({format})',
+      nationalIdInvalid: 'Enter a valid {label}',
+      termsAndPrivacyRequired: 'You must accept the terms of service and privacy policy',
+      successTitle: 'Registration complete!',
+      successDescription: 'Redirecting to your dashboard...',
+      savingError: 'Error saving data',
+      genericError: 'An error occurred. Please try again.',
+    },
+    chat: {
+      noTenant: 'No tenant',
+      photo: 'Photo',
+      loadError: 'Failed to load messages',
+      sendError: 'Failed to send',
+      fileTooLarge: 'File is too large. Max 5 MB',
+      onlyPhotos: 'Only photos are allowed',
+      uploadError: 'Upload failed',
+      noPropertyId: 'Missing property ID',
+}
   },
 
   // GERMAN
@@ -1102,6 +1332,62 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Mit Google fortfahren',
       orDivider: 'oder',
     },
+    invite: {
+      loadingInvitation: 'Einladung wird geladen...',
+      errorTitle: 'Fehler',
+      goToLogin: 'Zur Anmeldeseite',
+      checkEmail: 'E-Mail prüfen',
+      checkEmailDesc: 'Wir haben eine E-Mail an {email} gesendet. Klicken Sie den Link zur Bestätigung.',
+      checkEmailNote: 'Nach der Bestätigung können Sie sich anmelden und die Einladung annehmen.',
+      connectionError: 'Verbindungsfehler',
+      invalidInvitationData: 'Ungültige Einladungsdaten',
+      notFound: 'Einladung nicht gefunden',
+      expired: 'Die Einladung ist abgelaufen',
+      alreadyUsed: 'Diese Einladung wurde bereits verwendet',
+      loadError: 'Fehler beim Laden der Einladung',
+      activationError: 'Aktivierungsfehler',
+      invitedTo: 'Sie wurden eingeladen zu',
+      owner: 'Eigentümer',
+      address: 'Adresse',
+      createAccount: 'Konto erstellen',
+      loginToAccount: 'Anmelden',
+      loginAndAccept: 'Anmelden und annehmen',
+      alreadyHaveAccount: 'Schon ein Konto? Anmelden',
+      createNewAccount: 'Neues Konto erstellen',
+      continueWithGoogle: 'Mit Google fortfahren',
+      orDivider: 'oder',
+      firstNameMin: 'Der Vorname muss mindestens 2 Zeichen lang sein',
+      lastNameMin: 'Der Nachname muss mindestens 2 Zeichen lang sein',
+      passwordsMismatch: 'Passwörter stimmen nicht überein',
+      termsRequired: 'Sie müssen die Nutzungsbedingungen akzeptieren',
+      emailAlreadyRegistered: 'Diese E-Mail ist bereits registriert.',
+      wrongCredentials: 'Ungültige E-Mail oder Passwort',
+      completeRegistration: 'Registrierung abschließen',
+      completeDescription: 'Füllen Sie Ihre Daten aus, um die Registrierung abzuschließen',
+      firstNameRequired: 'Vorname ist erforderlich',
+      firstNameMinLength: 'Vorname muss mindestens 2 Zeichen haben',
+      firstNameLettersOnly: 'Vorname darf nur Buchstaben enthalten',
+      lastNameRequired: 'Nachname ist erforderlich',
+      lastNameMinLength: 'Nachname muss mindestens 2 Zeichen haben',
+      lastNameLettersOnly: 'Nachname darf nur Buchstaben enthalten',
+      phoneInvalid: 'Geben Sie eine gültige Telefonnummer ein ({format})',
+      nationalIdInvalid: 'Geben Sie eine gültige {label} ein',
+      termsAndPrivacyRequired: 'Sie müssen Nutzungsbedingungen und Datenschutzrichtlinie akzeptieren',
+      successTitle: 'Registrierung abgeschlossen!',
+      successDescription: 'Weiterleitung zum Dashboard...',
+      savingError: 'Fehler beim Speichern der Daten',
+      genericError: 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.',
+    },
+    chat: {
+      noTenant: 'Kein Mieter',
+      photo: 'Foto',
+      loadError: 'Nachrichten konnten nicht geladen werden',
+      sendError: 'Senden fehlgeschlagen',
+      fileTooLarge: 'Datei ist zu groß. Max. 5 MB',
+      onlyPhotos: 'Nur Fotos erlaubt',
+      uploadError: 'Upload fehlgeschlagen',
+      noPropertyId: 'Fehlende Immobilien-ID',
+    }
   },
 
   // UKRAINIAN
@@ -1319,6 +1605,62 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Продовжити з Google',
       orDivider: 'або',
     },
+    invite: {
+      loadingInvitation: 'Завантаження запрошення...',
+      errorTitle: 'Помилка',
+      goToLogin: 'Перейти до входу',
+      checkEmail: 'Перевірте пошту',
+      checkEmailDesc: 'Ми надіслали лист на {email}. Натисніть посилання для підтвердження.',
+      checkEmailNote: 'Після підтвердження ви зможете увійти та прийняти запрошення.',
+      connectionError: 'Помилка з\'єднання',
+      invalidInvitationData: 'Некоректні дані запрошення',
+      notFound: 'Запрошення не знайдено',
+      expired: 'Термін дії запрошення минув',
+      alreadyUsed: 'Це запрошення вже використано',
+      loadError: 'Помилка завантаження запрошення',
+      activationError: 'Помилка активації',
+      invitedTo: 'Вас запрошено до',
+      owner: 'Власник',
+      address: 'Адреса',
+      createAccount: 'Створити акаунт',
+      loginToAccount: 'Увійти в акаунт',
+      loginAndAccept: 'Увійти та прийняти',
+      alreadyHaveAccount: 'Вже є акаунт? Увійти',
+      createNewAccount: 'Створити новий акаунт',
+      continueWithGoogle: 'Продовжити з Google',
+      orDivider: 'або',
+      firstNameMin: "Ім'я повинно містити мінімум 2 символи",
+      lastNameMin: 'Прізвище повинно містити мінімум 2 символи',
+      passwordsMismatch: 'Паролі не збігаються',
+      termsRequired: 'Необхідно прийняти угоду користувача для продовження',
+      emailAlreadyRegistered: 'Цей email вже зареєстровано.',
+      wrongCredentials: 'Невірний email або пароль',
+      completeRegistration: 'Завершення реєстрації',
+      completeDescription: 'Заповніть дані для завершення реєстрації',
+      firstNameRequired: "Ім'я обов'язкове для заповнення",
+      firstNameMinLength: "Ім'я повинно містити мінімум 2 символи",
+      firstNameLettersOnly: "Ім'я може містити тільки літери",
+      lastNameRequired: "Прізвище обов'язкове для заповнення",
+      lastNameMinLength: 'Прізвище повинно містити мінімум 2 символи',
+      lastNameLettersOnly: 'Прізвище може містити тільки літери',
+      phoneInvalid: 'Введіть коректний номер телефону ({format})',
+      nationalIdInvalid: 'Введіть коректний {label}',
+      termsAndPrivacyRequired: 'Необхідно прийняти угоду користувача та політику конфіденційності',
+      successTitle: 'Реєстрацію завершено!',
+      successDescription: 'Перенаправляємо до особистого кабінету...',
+      savingError: 'Помилка при збереженні даних',
+      genericError: 'Сталася помилка. Спробуйте ще раз.',
+    },
+    chat: {
+      noTenant: 'Немає орендаря',
+      photo: 'Фото',
+      loadError: 'Помилка завантаження повідомлень',
+      sendError: 'Помилка відправки',
+      fileTooLarge: 'Файл занадто великий. Макс. 5 МБ',
+      onlyPhotos: 'Дозволені тільки фотографії',
+      uploadError: 'Помилка завантаження',
+      noPropertyId: 'Відсутній ідентифікатор нерухомості',
+    }
   },
 
   // CZECH
@@ -1536,5 +1878,61 @@ export const dictionaries: Record<Locale, Dictionary> = {
       continueWithGoogle: 'Pokračovat s Google',
       orDivider: 'nebo',
     },
+    invite: {
+      loadingInvitation: 'Načítání pozvánky...',
+      errorTitle: 'Chyba',
+      goToLogin: 'Přejít na přihlášení',
+      checkEmail: 'Zkontrolujte email',
+      checkEmailDesc: 'Poslali jsme email na {email}. Klikněte na odkaz pro potvrzení.',
+      checkEmailNote: 'Po potvrzení se budete moci přihlásit a přijmout pozvánku.',
+      connectionError: 'Chyba připojení',
+      invalidInvitationData: 'Neplatná data pozvánky',
+      notFound: 'Pozvánka nenalezena',
+      expired: 'Platnost pozvánky vypršela',
+      alreadyUsed: 'Tato pozvánka již byla použita',
+      loadError: 'Chyba načítání pozvánky',
+      activationError: 'Chyba aktivace',
+      invitedTo: 'Byli jste pozváni do',
+      owner: 'Vlastník',
+      address: 'Adresa',
+      createAccount: 'Vytvořit účet',
+      loginToAccount: 'Přihlásit se',
+      loginAndAccept: 'Přihlásit a přijmout',
+      alreadyHaveAccount: 'Již máte účet? Přihlásit',
+      createNewAccount: 'Vytvořit nový účet',
+      continueWithGoogle: 'Pokračovat s Google',
+      orDivider: 'nebo',
+      firstNameMin: 'Jméno musí mít alespoň 2 znaky',
+      lastNameMin: 'Příjmení musí mít alespoň 2 znaky',
+      passwordsMismatch: 'Hesla se neshodují',
+      termsRequired: 'Pro pokračování musíte přijmout podmínky',
+      emailAlreadyRegistered: 'Tento email je již zaregistrován.',
+      wrongCredentials: 'Neplatný email nebo heslo',
+      completeRegistration: 'Dokončení registrace',
+      completeDescription: 'Vyplňte údaje pro dokončení registrace',
+      firstNameRequired: 'Jméno je povinné',
+      firstNameMinLength: 'Jméno musí mít alespoň 2 znaky',
+      firstNameLettersOnly: 'Jméno může obsahovat pouze písmena',
+      lastNameRequired: 'Příjmení je povinné',
+      lastNameMinLength: 'Příjmení musí mít alespoň 2 znaky',
+      lastNameLettersOnly: 'Příjmení může obsahovat pouze písmena',
+      phoneInvalid: 'Zadejte platné telefonní číslo ({format})',
+      nationalIdInvalid: 'Zadejte platné {label}',
+      termsAndPrivacyRequired: 'Musíte přijmout podmínky používání a zásady ochrany osobních údajů',
+      successTitle: 'Registrace dokončena!',
+      successDescription: 'Přesměrování na dashboard...',
+      savingError: 'Chyba při ukládání dat',
+      genericError: 'Došlo k chybě. Zkuste to znovu.',
+    },
+    chat: {
+      noTenant: 'Žádný nájemník',
+      photo: 'Fotka',
+      loadError: 'Chyba načítání zpráv',
+      sendError: 'Chyba odeslání',
+      fileTooLarge: 'Soubor je příliš velký. Max. 5 MB',
+      onlyPhotos: 'Povoleny pouze fotografie',
+      uploadError: 'Chyba nahrávání',
+      noPropertyId: 'Chybí identifikátor nemovitosti',
+    }
   },
 }
