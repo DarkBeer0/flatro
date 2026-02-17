@@ -8,6 +8,9 @@
  * 2. Прошёл авторизацию через Supabase Auth
  * 
  * Здесь собираются дополнительные данные и согласие с условиями.
+ * 
+ * FIXED (Phase 1): All hardcoded Russian validation/error strings → i18n via t.invite.*
+ * FIXED (Phase 1): API error codes translated via translateInviteError()
  */
 
 'use client'
@@ -23,6 +26,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { RegionSelector } from '@/components/ui/RegionSelector'
 import { useRegion, RegionCode } from '@/lib/regions'
+import { useLocale } from '@/lib/i18n/context'
+import { translateInviteError } from '@/lib/i18n/invite-errors'
 import { 
   Loader2, User, Phone, FileText, Calendar, 
   AlertCircle, CheckCircle2, Globe 
@@ -68,6 +73,8 @@ export default function CompleteTenantRegistration() {
   const router = useRouter()
   const params = useParams()
   const inviteCode = params.code as string
+  const { t } = useLocale()
+  const inv = (t as any).invite || {}
 
   // Регион (по умолчанию Польша, но может быть изменён)
   const [regionCode, setRegionCode] = useState<RegionCode>('PL')
@@ -114,7 +121,7 @@ export default function CompleteTenantRegistration() {
       try {
         const res = await fetch(`/api/invitations/${inviteCode}`)
         if (!res.ok) {
-          throw new Error('Приглашение не найдено или истекло')
+          throw new Error(inv.notFound || 'Invitation not found or expired')
         }
         const data = await res.json()
         setInvitation(data)
@@ -133,7 +140,7 @@ export default function CompleteTenantRegistration() {
           }))
         }
       } catch (error) {
-        setErrors({ general: 'Не удалось загрузить приглашение. Проверьте ссылку.' })
+        setErrors({ general: inv.loadError || 'Failed to load invitation. Check the link.' })
       } finally {
         setIsLoading(false)
       }
@@ -142,7 +149,7 @@ export default function CompleteTenantRegistration() {
     if (inviteCode) {
       fetchInvitation()
     }
-  }, [inviteCode])
+  }, [inviteCode, inv.notFound, inv.loadError])
 
   // ============================================
   // ВАЛИДАЦИЯ
@@ -153,35 +160,35 @@ export default function CompleteTenantRegistration() {
 
     // Имя (универсально для всех регионов)
     if (!formData.firstName.trim()) {
-      newErrors.firstName = 'Имя обязательно для заполнения'
+      newErrors.firstName = inv.firstNameRequired || 'First name is required'
     } else if (formData.firstName.length < 2) {
-      newErrors.firstName = 'Имя должно содержать минимум 2 символа'
+      newErrors.firstName = inv.firstNameMinLength || 'First name must be at least 2 characters'
     } else if (!/^[\p{L}\s-]+$/u.test(formData.firstName)) {
-      newErrors.firstName = 'Имя может содержать только буквы'
+      newErrors.firstName = inv.firstNameLettersOnly || 'First name may only contain letters'
     }
 
     // Фамилия
     if (!formData.lastName.trim()) {
-      newErrors.lastName = 'Фамилия обязательна для заполнения'
+      newErrors.lastName = inv.lastNameRequired || 'Last name is required'
     } else if (formData.lastName.length < 2) {
-      newErrors.lastName = 'Фамилия должна содержать минимум 2 символа'
+      newErrors.lastName = inv.lastNameMinLength || 'Last name must be at least 2 characters'
     } else if (!/^[\p{L}\s-]+$/u.test(formData.lastName)) {
-      newErrors.lastName = 'Фамилия может содержать только буквы'
+      newErrors.lastName = inv.lastNameLettersOnly || 'Last name may only contain letters'
     }
 
     // Телефон (если введён - валидируем по региону)
     if (formData.phone && !validatePhone(formData.phone)) {
-      newErrors.phone = `Введите корректный номер телефона (${region.phone.format})`
+      newErrors.phone = (inv.phoneInvalid || 'Enter a valid phone number ({format})').replace('{format}', region.phone.format)
     }
 
     // Национальный ID (если есть для региона и введён)
     if (hasNationalId() && formData.nationalId && !validateNationalId(formData.nationalId)) {
-      newErrors.nationalId = `Введите корректный ${getNationalIdLabel()}`
+      newErrors.nationalId = (inv.nationalIdInvalid || 'Enter a valid {label}').replace('{label}', getNationalIdLabel())
     }
 
     // Согласие с условиями
     if (!formData.termsAccepted || !formData.privacyAccepted) {
-      newErrors.terms = 'Необходимо принять пользовательское соглашение и политику конфиденциальности'
+      newErrors.terms = inv.termsAndPrivacyRequired || 'You must accept the terms and privacy policy'
     }
 
     setErrors(newErrors)
@@ -270,7 +277,11 @@ export default function CompleteTenantRegistration() {
       const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(data.error || 'Ошибка при сохранении данных')
+        // FIXED: Use error codes from API + translateInviteError
+        const errorMessage = data.code
+          ? translateInviteError(data.code, inv, data.error)
+          : data.error || (inv.savingError || 'Error saving data')
+        throw new Error(errorMessage)
       }
 
       setSubmitSuccess(true)
@@ -281,7 +292,7 @@ export default function CompleteTenantRegistration() {
 
     } catch (error) {
       setErrors({ 
-        general: error instanceof Error ? error.message : 'Произошла ошибка. Попробуйте ещё раз.' 
+        general: error instanceof Error ? error.message : (inv.genericError || 'An error occurred. Please try again.')
       })
     } finally {
       setIsSubmitting(false)
@@ -298,7 +309,7 @@ export default function CompleteTenantRegistration() {
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
-          <p className="mt-2 text-gray-600">Загрузка приглашения...</p>
+          <p className="mt-2 text-gray-600">{inv.loadingInvitation || 'Loading invitation...'}</p>
         </div>
       </div>
     )
@@ -319,7 +330,7 @@ export default function CompleteTenantRegistration() {
               variant="outline"
               onClick={() => router.push('/')}
             >
-              На главную
+              {inv.goHome || 'Go to home'}
             </Button>
           </CardContent>
         </Card>
@@ -335,10 +346,10 @@ export default function CompleteTenantRegistration() {
           <CardContent className="pt-6 text-center">
             <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              Регистрация завершена!
+              {inv.successTitle || 'Registration complete!'}
             </h2>
             <p className="text-gray-600">
-              Добро пожаловать в Flatro. Сейчас вы будете перенаправлены в личный кабинет.
+              {inv.successDescription || 'Welcome to Flatro. Redirecting to your dashboard.'}
             </p>
             <Loader2 className="h-6 w-6 animate-spin mx-auto mt-4 text-blue-600" />
           </CardContent>
@@ -357,7 +368,7 @@ export default function CompleteTenantRegistration() {
         {/* Заголовок */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Flatro</h1>
-          <p className="text-gray-600 mt-2">Завершение регистрации арендатора</p>
+          <p className="text-gray-600 mt-2">{inv.pageSubtitle || 'Complete tenant registration'}</p>
         </div>
 
         {/* Информация о приглашении */}
@@ -365,10 +376,10 @@ export default function CompleteTenantRegistration() {
           <Card className="mb-6 border-blue-200 bg-blue-50">
             <CardContent className="pt-4">
               <p className="text-sm text-blue-800">
-                <strong>Вы приглашены в:</strong> {invitation.propertyAddress}
+                <strong>{inv.invitedTo || 'You are invited to'}:</strong> {invitation.propertyAddress}
               </p>
               <p className="text-sm text-blue-600 mt-1">
-                Владелец: {invitation.ownerName}
+                {inv.owner || 'Owner'}: {invitation.ownerName}
               </p>
             </CardContent>
           </Card>
@@ -379,10 +390,10 @@ export default function CompleteTenantRegistration() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <User className="h-5 w-5" />
-              Ваши данные
+              {inv.yourData || 'Your information'}
             </CardTitle>
             <CardDescription>
-              Заполните информацию для создания профиля арендатора
+              {inv.fillInfo || 'Fill in the information to create your tenant profile'}
             </CardDescription>
           </CardHeader>
 
@@ -400,14 +411,14 @@ export default function CompleteTenantRegistration() {
               <div className="space-y-2">
                 <Label className="flex items-center gap-2">
                   <Globe className="h-4 w-4" />
-                  Страна
+                  {inv.country || 'Country'}
                 </Label>
                 <RegionSelector
                   value={regionCode}
                   onChange={handleRegionChange}
                 />
                 <p className="text-xs text-gray-500">
-                  Выбор страны влияет на формат телефона и документов
+                  {inv.countryHint || 'Country affects phone and document formats'}
                 </p>
               </div>
 
@@ -415,11 +426,11 @@ export default function CompleteTenantRegistration() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">
-                    Имя <span className="text-red-500">*</span>
+                    {inv.firstName || 'First name'} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="firstName"
-                    placeholder="Введите имя"
+                    placeholder={inv.enterFirstName || 'Enter first name'}
                     value={formData.firstName}
                     onChange={(e) => handleChange('firstName', e.target.value)}
                     onBlur={() => handleBlur('firstName')}
@@ -432,11 +443,11 @@ export default function CompleteTenantRegistration() {
 
                 <div className="space-y-2">
                   <Label htmlFor="lastName">
-                    Фамилия <span className="text-red-500">*</span>
+                    {inv.lastName || 'Last name'} <span className="text-red-500">*</span>
                   </Label>
                   <Input
                     id="lastName"
-                    placeholder="Введите фамилию"
+                    placeholder={inv.enterLastName || 'Enter last name'}
                     value={formData.lastName}
                     onChange={(e) => handleChange('lastName', e.target.value)}
                     onBlur={() => handleBlur('lastName')}
@@ -452,7 +463,7 @@ export default function CompleteTenantRegistration() {
               <div className="space-y-2">
                 <Label htmlFor="phone" className="flex items-center gap-2">
                   <Phone className="h-4 w-4" />
-                  Телефон
+                  {inv.phone || 'Phone'}
                 </Label>
                 <Input
                   id="phone"
@@ -467,7 +478,7 @@ export default function CompleteTenantRegistration() {
                   <p className="text-red-500 text-sm">{errors.phone}</p>
                 )}
                 <p className="text-xs text-gray-500">
-                  Рекомендуется для связи по важным вопросам
+                  {inv.phoneHint || 'Recommended for important communications'}
                 </p>
               </div>
 
@@ -477,7 +488,7 @@ export default function CompleteTenantRegistration() {
                   <Label htmlFor="nationalId" className="flex items-center gap-2">
                     <FileText className="h-4 w-4" />
                     {getNationalIdLabel()}
-                    <span className="text-gray-400 text-sm">(опционально)</span>
+                    <span className="text-gray-400 text-sm">({inv.optional || 'optional'})</span>
                   </Label>
                   <Input
                     id="nationalId"
@@ -501,7 +512,7 @@ export default function CompleteTenantRegistration() {
               <div className="space-y-2">
                 <Label htmlFor="moveInDate" className="flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
-                  Планируемая дата заселения
+                  {inv.moveInDate || 'Planned move-in date'}
                 </Label>
                 <Input
                   id="moveInDate"
@@ -514,20 +525,20 @@ export default function CompleteTenantRegistration() {
               {/* Экстренный контакт */}
               <div className="border-t pt-4">
                 <h3 className="text-sm font-medium text-gray-700 mb-3">
-                  Контакт для экстренной связи (опционально)
+                  {inv.emergencySection || 'Emergency contact (optional)'}
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="emergencyContact">ФИО контакта</Label>
+                    <Label htmlFor="emergencyContact">{inv.emergencyName || 'Contact name'}</Label>
                     <Input
                       id="emergencyContact"
-                      placeholder="Имя Фамилия"
+                      placeholder={inv.enterName || 'Full name'}
                       value={formData.emergencyContact}
                       onChange={(e) => handleChange('emergencyContact', e.target.value)}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="emergencyPhone">Телефон</Label>
+                    <Label htmlFor="emergencyPhone">{inv.emergencyPhone || 'Phone'}</Label>
                     <Input
                       id="emergencyPhone"
                       type="tel"
@@ -542,7 +553,7 @@ export default function CompleteTenantRegistration() {
               {/* Лицензионное соглашение */}
               <div className="border-t pt-4 space-y-4">
                 <h3 className="text-sm font-medium text-gray-700">
-                  Правовые документы <span className="text-red-500">*</span>
+                  {inv.legalDocuments || 'Legal documents'} <span className="text-red-500">*</span>
                 </h3>
 
                 <div className="flex items-start space-x-3">
@@ -555,13 +566,13 @@ export default function CompleteTenantRegistration() {
                     className="mt-1"
                   />
                   <Label htmlFor="terms" className="text-sm leading-relaxed cursor-pointer">
-                    Я прочитал(а) и принимаю{' '}
+                    {inv.iAccept || 'I have read and accept the'}{' '}
                     <Link 
                       href="/terms" 
                       target="_blank" 
                       className="text-blue-600 hover:underline"
                     >
-                      Пользовательское соглашение
+                      {inv.termsOfService || 'Terms of Service'}
                     </Link>
                   </Label>
                 </div>
@@ -576,13 +587,13 @@ export default function CompleteTenantRegistration() {
                     className="mt-1"
                   />
                   <Label htmlFor="privacy" className="text-sm leading-relaxed cursor-pointer">
-                    Я прочитал(а) и принимаю{' '}
+                    {inv.iAccept || 'I have read and accept the'}{' '}
                     <Link 
                       href="/privacy" 
                       target="_blank" 
                       className="text-blue-600 hover:underline"
                     >
-                      Политику конфиденциальности
+                      {inv.privacyPolicy || 'Privacy Policy'}
                     </Link>
                     {' '}({region.legal.dataProtectionLaw})
                   </Label>
@@ -603,15 +614,15 @@ export default function CompleteTenantRegistration() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Сохранение...
+                    {inv.saving || 'Saving...'}
                   </>
                 ) : (
-                  'Завершить регистрацию'
+                  inv.completeRegistration || 'Complete registration'
                 )}
               </Button>
 
               <p className="text-xs text-center text-gray-500">
-                Нажимая кнопку, вы подтверждаете достоверность введённых данных
+                {inv.confirmAccuracy || 'By clicking, you confirm the accuracy of the data entered'}
               </p>
             </form>
           </CardContent>
