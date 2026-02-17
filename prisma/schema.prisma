@@ -125,6 +125,7 @@ model Property {
   rooms       Int?
   floor       Int?
   description String?
+  photos      String[]   @default([])
   status      PropertyStatus @default(VACANT)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt

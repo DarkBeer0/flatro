@@ -1,14 +1,55 @@
 // lib/supabase/storage.ts
 // Helper utilities for Supabase Storage — "attachments" bucket
-// Generates signed URLs for secure image rendering
+// 
+// FIX: Signed URLs were expiring after 1 hour, breaking images.
+// Now supports TWO modes:
+//   A) PUBLIC bucket (recommended) — getPublicUrl() → URLs never expire
+//   B) PRIVATE bucket (fallback) — createSignedUrl() with 7-day TTL
+//
+// To enable mode A: Go to Supabase Dashboard → Storage → "attachments" bucket
+// → Click ⚙️ → Set "Public" = true → Save
+// Then set NEXT_PUBLIC_STORAGE_PUBLIC=true in .env.local
 
 import { createClient as createServerClient } from '@/lib/supabase/server'
 import { createClient as createBrowserClient } from '@/lib/supabase/client'
 
 const BUCKET = 'attachments'
-const SIGNED_URL_EXPIRY = 3600 // 1 hour in seconds
+
+// 7 days instead of 1 hour — images won't break for a week
+const SIGNED_URL_EXPIRY = 7 * 24 * 60 * 60 // 604800 seconds
+
+// Check if bucket is configured as public
+const IS_PUBLIC_BUCKET = process.env.NEXT_PUBLIC_STORAGE_PUBLIC === 'true'
+
+// ============ PUBLIC URL (never expires) ============
+
+/**
+ * Get a public URL for an attachment.
+ * Only works if the bucket is set to "Public" in Supabase Dashboard.
+ */
+function getPublicUrl(supabaseUrl: string, path: string): string {
+  // Format: {supabase_url}/storage/v1/object/public/{bucket}/{path}
+  return `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${path}`
+}
 
 // ============ SERVER-SIDE ============
+
+/**
+ * Generate URL for an attachment (server-side)
+ * Uses public URL if bucket is public, otherwise signed URL with 7-day TTL
+ */
+export async function getAttachmentUrl(path: string): Promise<string | null> {
+  if (!path) return null
+
+  if (IS_PUBLIC_BUCKET) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!supabaseUrl) return null
+    return getPublicUrl(supabaseUrl, path)
+  }
+
+  // Fallback: signed URL with 7-day TTL
+  return getSignedUrl(path, SIGNED_URL_EXPIRY)
+}
 
 /**
  * Generate a signed URL for an attachment (server-side)
@@ -27,6 +68,30 @@ export async function getSignedUrl(path: string, expiresIn = SIGNED_URL_EXPIRY):
   }
 
   return data.signedUrl
+}
+
+/**
+ * Generate URLs for multiple paths (server-side, batched)
+ * Returns a map of path → URL
+ */
+export async function getAttachmentUrls(
+  paths: string[]
+): Promise<Record<string, string>> {
+  if (!paths.length) return {}
+
+  if (IS_PUBLIC_BUCKET) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    if (!supabaseUrl) return {}
+    
+    const map: Record<string, string> = {}
+    paths.forEach(path => {
+      map[path] = getPublicUrl(supabaseUrl, path)
+    })
+    return map
+  }
+
+  // Fallback: signed URLs with 7-day TTL
+  return getSignedUrls(paths, SIGNED_URL_EXPIRY)
 }
 
 /**
@@ -89,12 +154,12 @@ export async function uploadAttachment(
   // Validate
   const MAX_SIZE = 5 * 1024 * 1024 // 5MB
   if (file.size > MAX_SIZE) {
-    return { path: '', error: 'Plik jest za duży. Maksymalny rozmiar: 5 MB' }
+    return { path: '', error: 'File too large. Maximum: 5 MB' }
   }
 
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'image/heic']
   if (!allowedTypes.includes(file.type)) {
-    return { path: '', error: 'Nieprawidłowy format. Dozwolone: JPG, PNG, WebP, HEIC' }
+    return { path: '', error: 'Invalid format. Allowed: JPG, PNG, WebP, HEIC' }
   }
 
   const { data, error } = await supabase.storage
@@ -106,7 +171,7 @@ export async function uploadAttachment(
 
   if (error) {
     console.error('[Storage] Upload error:', error.message)
-    return { path: '', error: 'Błąd przesyłania: ' + error.message }
+    return { path: '', error: 'Upload error: ' + error.message }
   }
 
   return { path: data.path, error: null }
@@ -116,7 +181,7 @@ export async function uploadAttachment(
  * Generate unique filename with timestamp
  */
 export function generateStoragePath(
-  type: 'chat' | 'issues',
+  type: 'chat' | 'issues' | 'property',
   propertyId: string,
   userId: string,
   fileName: string,
@@ -128,6 +193,10 @@ export function generateStoragePath(
 
   if (type === 'chat') {
     return `property_${propertyId}/chat/user_${userId}/${uniqueName}`
+  }
+
+  if (type === 'property') {
+    return `property_${propertyId}/photos/${uniqueName}`
   }
 
   // Issues

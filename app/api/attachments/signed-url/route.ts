@@ -1,10 +1,11 @@
 // app/api/attachments/signed-url/route.ts
-// Generate signed URLs for secure image access
+// Generate URLs for secure image access
+// FIX: Now uses getAttachmentUrls() which supports public bucket mode
+// and 7-day TTL for signed URLs (was 1 hour)
 
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-
-const BUCKET = 'attachments'
+import { getAttachmentUrls } from '@/lib/supabase/storage'
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,21 +28,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Maximum 50 paths per request' }, { status: 400 })
     }
 
-    const { data, error } = await supabase.storage
-      .from(BUCKET)
-      .createSignedUrls(paths, 3600) // 1 hour
-
-    if (error) {
-      console.error('[SignedURL] Error:', error)
-      return NextResponse.json({ error: 'Failed to generate URLs' }, { status: 500 })
-    }
-
-    const urls: Record<string, string> = {}
-    data?.forEach((item) => {
-      if (item.signedUrl && item.path) {
-        urls[item.path] = item.signedUrl
-      }
-    })
+    // Uses public URLs or 7-day signed URLs depending on config
+    const urls = await getAttachmentUrls(paths)
 
     return NextResponse.json({ urls })
   } catch (error) {
