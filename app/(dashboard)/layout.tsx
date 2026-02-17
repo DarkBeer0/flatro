@@ -71,6 +71,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   { href: '/payments', icon: CreditCard, label: t.nav.payments },
   { href: '/contracts', icon: FileText, label: t.nav.contracts },
   { href: '/messages', icon: MessageSquare, label: t.nav.messages || 'Сообщения' },
+  { href: '/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
 ] 
 
   const tenantNavItems = [
@@ -81,6 +82,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
     { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },
     { href: '/tenant/tickets', icon: AlertTriangle, label: 'Заявки' },
+    { href: '/tenant/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
   ]
 
   const isActive = (href: string) => {

@@ -120,7 +120,7 @@ export async function GET() {
             })),
             lastMessage: lastMessage ? {
               id: lastMessage.id,
-              content: lastMessage.content.substring(0, 100),
+              content: (lastMessage.content || '').substring(0, 100),
               createdAt: lastMessage.createdAt,
               isFromMe: lastMessage.senderId === authUser.id,
               isRead: true,
@@ -206,7 +206,7 @@ export async function GET() {
           },
           lastMessage: lastMessage ? {
             id: lastMessage.id,
-            content: lastMessage.content.substring(0, 100),
+            content: (lastMessage.content || '').substring(0, 100),
             createdAt: lastMessage.createdAt,
             isOwn: lastMessage.senderId === authUser.id,
           } : null,

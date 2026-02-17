@@ -71,14 +71,18 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     { href: '/payments', icon: CreditCard, label: t.nav?.payments || 'Платежи' },
     { href: '/contracts', icon: FileText, label: t.nav?.contracts || 'Договоры' },
     { href: '/messages', icon: MessageSquare, label: t.nav?.messages || 'Сообщения' },
+    { href: '/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
   ]
 
   const tenantNavItems = [
     { href: '/tenant/dashboard', icon: Home, label: 'Моё жильё' },
+    { href: '/tenant/meters', icon: SquareStack, label: 'Liczniki' },
+    { href: '/tenant/balance', icon: Wallet, label: 'Moje media' },
     { href: '/tenant/contracts', icon: FileText, label: 'Umowy' },
     { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
     { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },
     { href: '/tenant/tickets', icon: AlertTriangle, label: 'Заявки' },
+    { href: '/tenant/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
   ]
 
   const isActive = (href: string) => {

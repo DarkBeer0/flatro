@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: Utilities V5 — Meters & Utilities Module (Rozliczenie mediów)
+// Обновлено: V6 — Issues (Zgłoszenia) + Message Attachments
 
 generator client {
   provider = "prisma-client-js"
@@ -67,11 +67,14 @@ model User {
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
 
-  // Заявки созданные (для жильцов)
+  // Заявки созданные (для жильцов) — legacy
   tickets Ticket[]
 
   // Объявления созданные (для владельцев)
   announcements Announcement[]
+
+  // V6: Zgłoszenia (Issues)
+  issues Issue[]
 
   @@map("users")
 }
@@ -143,6 +146,9 @@ model Property {
   settlements    UtilitySettlement[]
   ledgerEntries  TenantLedger[]
 
+  // V6: Issues (Zgłoszenia)
+  issues Issue[]
+
   // Индексы
   @@index([userId, status])
   @@map("properties")
@@ -182,7 +188,7 @@ model Tenant {
 
   // Польские требования (Contracts V2)
   citizenship         String? // Obywatelstwo
-  registrationAddress String? // Adres zameldowania
+  registrationAddress String? // Adres замeldowania
 
   // Даты аренды
   moveInDate  DateTime?
@@ -401,28 +407,37 @@ model PaymentTemplate {
   @@map("payment_templates")
 }
 
-// ============== СООБЩЕНИЯ ==============
+// ============== СООБЩЕНИЯ (V6: + Attachments + Issue Reference) ==============
 
 model Message {
   id         String    @id @default(uuid())
   senderId   String
   receiverId String
   propertyId String
-  content    String
+  content    String?   // V6: теперь nullable — поддержка image-only сообщений
   isRead     Boolean   @default(false)
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
+  // V6: Поддержка вложений (фото в чате)
+  attachmentPath     String? // Относительный путь в Supabase Storage bucket "attachments"
+  attachmentMetadata Json?   // { width, height, size, mime_type }
+
+  // V6: Ссылка на zgłoszenie (если сообщение касается usterki)
+  issueId String?
+
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  issue    Issue?   @relation(fields: [issueId], references: [id], onDelete: SetNull)
 
   @@index([receiverId, isRead])
   @@index([propertyId, createdAt])
+  @@index([issueId])
   @@map("messages")
 }
 
-// ============== ЗАЯВКИ ==============
+// ============== ЗАЯВКИ (legacy — Tickets) ==============
 
 model Ticket {
   id          String       @id @default(uuid())
@@ -478,6 +493,86 @@ model Announcement {
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   @@map("announcements")
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║                                                              ║
+// ║          V6: ISSUES (ZGŁOSZENIA) + ATTACHMENTS               ║
+// ║          Maintenance reporting system                        ║
+// ║                                                              ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+model Issue {
+  id          String        @id @default(uuid())
+  propertyId  String
+  createdById String        // User who created (tenant)
+  title       String
+  description String
+  category    IssueCategory @default(OTHER)
+  status      IssueStatus   @default(OPEN)
+  priority    IssuePriority @default(MEDIUM)
+  isPrivate   Boolean       @default(false) // Переключатель приватности для multi-tenant квартир
+  isDeleted   Boolean       @default(false) // Soft delete
+
+  resolvedAt DateTime?
+  closedAt   DateTime?
+  deletedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Связи
+  property    Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  attachments IssueAttachment[]
+  messages    Message[]         // Сообщения в чате, ссылающиеся на это zgłoszenie
+
+  @@index([propertyId, status])
+  @@index([createdById])
+  @@index([propertyId, isPrivate, isDeleted])
+  @@map("issues")
+}
+
+model IssueAttachment {
+  id        String   @id @default(uuid())
+  issueId   String
+  filePath  String   // Относительный путь в Supabase Storage bucket "attachments"
+  fileName  String
+  fileSize  Int?
+  mimeType  String?
+  metadata  Json?    // { width, height }
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+
+  @@index([issueId])
+  @@map("issue_attachments")
+}
+
+enum IssueStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum IssueCategory {
+  PLUMBING      // Hydraulika
+  ELECTRICAL    // Elektryka
+  HEATING       // Ogrzewanie
+  APPLIANCE     // Sprzęt AGD
+  STRUCTURAL    // Konstrukcja
+  PEST_CONTROL  // Dezynsekcja
+  CLEANING      // Czystość
+  OTHER         // Inne
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
 }
 
 // ╔══════════════════════════════════════════════════════════════╗
