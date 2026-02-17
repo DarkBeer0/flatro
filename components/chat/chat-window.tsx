@@ -1,4 +1,6 @@
 // components/chat/chat-window.tsx
+// UPDATED: Added attachment support for sending images in chat
+// FIX: Integrates ChatAttachmentInput flow into message sending
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
@@ -7,14 +9,31 @@ import { MessageBubble, DateSeparator } from './message-bubble'
 import { MessageInput } from './message-input'
 import Link from 'next/link'
 
+interface AttachmentData {
+  path: string
+  metadata: { width: number; height: number; size: number; mime_type: string }
+}
+
 interface Message {
   id: string
   senderId: string
   receiverId: string
-  content: string
+  content: string | null // V6: nullable for image-only messages
   isRead: boolean
   readAt: string | null
   createdAt: string
+  attachmentUrl?: string | null
+  attachmentMetadata?: {
+    width?: number
+    height?: number
+    size?: number
+    mime_type?: string
+  } | null
+  issueRef?: {
+    id: string
+    title: string
+    status: string
+  } | null
   sender: {
     id: string
     name: string | null
@@ -57,7 +76,6 @@ export function ChatWindow({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const shouldScrollToBottom = useRef(true)
   
-  // Храним ID отправленных temp сообщений для отслеживания
   const pendingMessages = useRef<Set<string>>(new Set())
 
   const scrollToBottom = useCallback((force = false) => {
@@ -66,79 +84,39 @@ export function ChatWindow({
     }
   }, [])
 
-  // Умное обновление сообщений без мигания
+  // Smart message update without flicker
   const updateMessages = useCallback((serverMessages: Message[]) => {
     setMessages(prev => {
-      // Получаем temp сообщения (ещё не подтверждённые сервером)
-      const tempMessages = prev.filter(m => m.id.startsWith('temp-'))
+      const tempMessages = prev.filter(m => 
+        m.id.startsWith('temp-') && pendingMessages.current.has(m.id)
+      )
       
-      // Создаём Set серверных ID для быстрого поиска
       const serverIds = new Set(serverMessages.map(m => m.id))
+      const uniqueTemp = tempMessages.filter(m => !serverIds.has(m.id))
       
-      // Проверяем какие temp сообщения уже пришли с сервера (по content + senderId)
-      const confirmedTempIds = new Set<string>()
-      tempMessages.forEach(temp => {
-        const found = serverMessages.find(
-          s => s.senderId === temp.senderId && 
-               s.content === temp.content &&
-               // Проверяем что время создания близко (в пределах 30 сек)
-               Math.abs(new Date(s.createdAt).getTime() - new Date(temp.createdAt).getTime()) < 30000
-        )
-        if (found) {
-          confirmedTempIds.add(temp.id)
-          pendingMessages.current.delete(temp.id)
-        }
-      })
-      
-      // Оставляем только неподтверждённые temp сообщения
-      const remainingTemp = tempMessages.filter(t => !confirmedTempIds.has(t.id))
-      
-      // Проверяем нужно ли вообще обновлять
-      const prevServerMessages = prev.filter(m => !m.id.startsWith('temp-'))
-      
-      // Если серверные сообщения не изменились и нет подтверждённых temp - не обновляем
-      if (
-        prevServerMessages.length === serverMessages.length &&
-        confirmedTempIds.size === 0 &&
-        prevServerMessages.every((m, i) => 
-          m.id === serverMessages[i]?.id && 
-          m.isRead === serverMessages[i]?.isRead
-        )
-      ) {
-        return prev // Возвращаем предыдущее состояние без изменений
-      }
-      
-      // Объединяем серверные + оставшиеся temp
-      return [...serverMessages, ...remainingTemp]
+      return [...serverMessages, ...uniqueTemp]
     })
   }, [])
 
-  const fetchMessages = useCallback(async (initial = false) => {
+  const fetchMessages = useCallback(async (isInitial = false) => {
     try {
       const res = await fetch(`/api/messages/${propertyId}`)
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Failed to fetch messages')
-      }
+      if (!res.ok) throw new Error('Ошибка загрузки сообщений')
       
       const data = await res.json()
-      
-      if (initial) {
-        setMessages(data.messages)
+
+      if (data.property) setProperty(data.property)
+      if (data.chatPartner) setChatPartner(data.chatPartner)
+      if (data.currentUserId) setCurrentUserId(data.currentUserId)
+
+      updateMessages(data.messages || [])
+
+      if (isInitial) {
         setLoading(false)
         setTimeout(() => scrollToBottom(true), 100)
-      } else {
-        // Используем умное обновление
-        updateMessages(data.messages)
       }
-      
-      setProperty(data.property)
-      setChatPartner(data.chatPartner)
-      setCurrentUserId(data.currentUserId)
-      
     } catch (err) {
-      console.error('Error fetching messages:', err)
-      if (initial) {
+      if (isInitial) {
         setError(err instanceof Error ? err.message : 'Ошибка загрузки')
         setLoading(false)
       }
@@ -183,18 +161,28 @@ export function ChatWindow({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  const handleSend = useCallback(async (content: string) => {
+  // UPDATED: handleSend now supports optional attachment
+  const handleSend = useCallback(async (content: string, attachment?: AttachmentData) => {
     if (!currentUserId) return
+
+    const hasContent = !!content.trim()
+    const hasAttachment = !!attachment
+
+    // Must have at least text or attachment
+    if (!hasContent && !hasAttachment) return
 
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
     const tempMessage: Message = {
       id: tempId,
       senderId: currentUserId,
       receiverId: chatPartner?.id || '',
-      content,
+      content: hasContent ? content : null,
       isRead: false,
       readAt: null,
       createdAt: new Date().toISOString(),
+      // Show local preview for attachment
+      attachmentUrl: undefined, // Will be resolved by server
+      attachmentMetadata: hasAttachment ? attachment.metadata : null,
       sender: { id: currentUserId, name: null }
     }
     
@@ -204,10 +192,18 @@ export function ChatWindow({
     scrollToBottom(true)
 
     try {
+      // Build request body with optional attachment fields
+      const body: Record<string, unknown> = {}
+      if (hasContent) body.content = content
+      if (hasAttachment) {
+        body.attachmentPath = attachment.path
+        body.attachmentMetadata = attachment.metadata
+      }
+
       const res = await fetch(`/api/messages/${propertyId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(body),
       })
 
       if (!res.ok) {
@@ -220,7 +216,7 @@ export function ChatWindow({
       const newMessage = await res.json()
       pendingMessages.current.delete(tempId)
       
-      // Заменяем temp на реальное сообщение
+      // Replace temp with real message
       setMessages(prev => prev.map(m => m.id === tempId ? newMessage : m))
       
     } catch (error) {
@@ -330,6 +326,9 @@ export function ChatWindow({
                   isFromMe={message.senderId === currentUserId}
                   isRead={message.isRead}
                   senderName={message.sender.name}
+                  attachmentUrl={message.attachmentUrl}
+                  attachmentMetadata={message.attachmentMetadata}
+                  issueRef={message.issueRef}
                 />
               ))}
             </div>
@@ -338,10 +337,11 @@ export function ChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
+      {/* Input — now with attachment support */}
       <MessageInput
         onSend={handleSend}
         disabled={!chatPartner?.id}
+        propertyId={propertyId}
         placeholder={
           chatPartner?.id
             ? `Сообщение для ${chatPartner.name || 'собеседника'}...`
