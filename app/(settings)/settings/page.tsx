@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/lib/i18n/context'
 import { locales, localeNames, Locale } from '@/lib/i18n/dictionaries'
 import { createClient } from '@/lib/supabase/client'
+import NotificationsTab from '@/components/settings/notifications-tab'
 
 interface UserData {
   id: string
@@ -570,13 +571,7 @@ function SettingsContent() {
           )}
 
           {/* Notifications */}
-          {activeTab === 'notifications' && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">Уведомления</h2>
-              <p className="text-sm text-gray-500 mb-6">Настройка email и push-уведомлений</p>
-              <p className="text-gray-400 text-sm">Функционал в разработке</p>
-            </Card>
-          )}
+          {activeTab === 'notifications' && <NotificationsTab />}
 
           {/* Billing */}
           {activeTab === 'billing' && (
