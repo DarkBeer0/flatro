@@ -806,13 +806,7 @@ export default function ContractDetailPage() {
 
           {/* Protocols */}
           <div className="mb-8">
-            <ProtocolsList
-              contractId={contract.id}
-              onCreateProtocol={(type) => {
-                // TODO: Open protocol creation modal
-                alert(`Tworzenie protokołu: ${type === 'MOVE_IN' ? 'Wydanie' : 'Zwrot'} lokalu\n\n(Modal tworzenia protokołu — do implementacji)`)
-              }}
-            />
+            <ProtocolsList contractId={contract.id} />
           </div>
 
           {/* Annexes */}
@@ -820,10 +814,6 @@ export default function ContractDetailPage() {
             <div className="mb-8">
               <AnnexesList
                 contractId={contract.id}
-                onCreateAnnex={() => {
-                  // TODO: Open annex creation modal
-                  alert('Tworzenie nowego aneksu\n\n(Modal tworzenia aneksu — do implementacji)')
-                }}
                 onContractUpdated={loadContract}
               />
             </div>

@@ -103,6 +103,7 @@ export function ProtocolsList({ contractId }: ProtocolsListProps) {
   const [protocols, setProtocols] = useState<Protocol[]>([])
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
 
   // Creation form state
   const [showForm, setShowForm] = useState(false)
@@ -244,6 +245,29 @@ export function ProtocolsList({ contractId }: ProtocolsListProps) {
       console.error('Error downloading PDF:', err)
     } finally {
       setDownloading(null)
+    }
+  }
+
+  async function handleDeleteProtocol(protocolId: string, type: string) {
+    const label = type === 'MOVE_IN' ? 'wydania' : 'zwrotu'
+    if (!confirm(`Czy na pewno chcesz usunąć protokół ${label}? Tej operacji nie można cofnąć.`)) return
+
+    setDeleting(protocolId)
+    try {
+      const res = await fetch(
+        `/api/contracts/${contractId}/protocols?protocolId=${protocolId}`,
+        { method: 'DELETE' }
+      )
+      if (res.ok) {
+        fetchProtocols()
+      } else {
+        const data = await res.json()
+        alert(data.error || 'Błąd usuwania protokołu')
+      }
+    } catch {
+      alert('Błąd połączenia')
+    } finally {
+      setDeleting(null)
     }
   }
 
@@ -642,19 +666,34 @@ export function ProtocolsList({ contractId }: ProtocolsListProps) {
                     </p>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleDownloadPdf(protocol.id)}
-                  disabled={downloading === protocol.id}
-                >
-                  {downloading === protocol.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Download className="h-3.5 w-3.5" />
-                  )}
-                  <span className="ml-1.5">PDF</span>
-                </Button>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleDownloadPdf(protocol.id)}
+                    disabled={downloading === protocol.id}
+                  >
+                    {downloading === protocol.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Download className="h-3.5 w-3.5" />
+                    )}
+                    <span className="ml-1.5">PDF</span>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                    onClick={() => handleDeleteProtocol(protocol.id, protocol.type)}
+                    disabled={deleting === protocol.id}
+                  >
+                    {deleting === protocol.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
               </div>
             </Card>
           )

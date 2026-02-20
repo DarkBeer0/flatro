@@ -281,3 +281,51 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+
+// ──────────────────────────────────────────────────────────────
+// DELETE /api/contracts/[id]/annexes?annexId=xxx
+// Only DRAFT annexes can be deleted
+// ──────────────────────────────────────────────────────────────
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const user = await requireUser()
+    const { id: contractId } = await params
+    const { searchParams } = new URL(request.url)
+    const annexId = searchParams.get('annexId')
+
+    if (!annexId) {
+      return NextResponse.json({ error: 'annexId is required' }, { status: 400 })
+    }
+
+    const contract = await prisma.contract.findFirst({
+      where: { id: contractId, property: { userId: user.id } },
+    })
+    if (!contract) {
+      return NextResponse.json({ error: 'Contract not found' }, { status: 404 })
+    }
+
+    const annex = await prisma.contractAnnex.findFirst({
+      where: { id: annexId, contractId },
+    })
+    if (!annex) {
+      return NextResponse.json({ error: 'Annex not found' }, { status: 404 })
+    }
+
+    if (annex.status === 'SIGNED') {
+      return NextResponse.json(
+        { error: 'Nie można usunąć podpisanego aneksu' },
+        { status: 409 }
+      )
+    }
+
+    await prisma.contractAnnex.delete({ where: { id: annexId } })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Error deleting annex:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
