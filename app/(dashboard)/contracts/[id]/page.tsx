@@ -1,8 +1,9 @@
 // app/(dashboard)/contracts/[id]/page.tsx
-// REPLACE existing file — adds: signing UI, status rollback, PDF generation, status history
+// Flatro — Contract Detail Page
+// V9: + Handover Protocols + Contract Annexes (Lifecycle modules)
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -24,13 +25,21 @@ import {
   History,
   Undo2,
   Printer,
+  ClipboardList,
+  FilePlus2,
 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { contractsDict } from '@/lib/i18n/contracts'
+import { ProtocolsList } from '@/components/contracts/ProtocolsList'
+import { AnnexesList } from '@/components/contracts/AnnexesList'
 
 const t = contractsDict.pl
+
+// ============================================
+// Status & Transition Config
+// ============================================
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }> = {
   DRAFT: { label: t.statuses.DRAFT, color: 'bg-gray-100 text-gray-700', icon: FileText },
@@ -41,7 +50,6 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; icon: any }>
   TERMINATED: { label: t.statuses.TERMINATED, color: 'bg-red-100 text-red-700', icon: XCircle },
 }
 
-// Forward transitions (normal flow)
 const FORWARD_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['PENDING_SIGNATURE'],
   PENDING_SIGNATURE: ['SIGNED'],
@@ -51,7 +59,6 @@ const FORWARD_TRANSITIONS: Record<string, string[]> = {
   TERMINATED: [],
 }
 
-// Rollback transitions
 const ROLLBACK_TRANSITIONS: Record<string, string[]> = {
   DRAFT: [],
   PENDING_SIGNATURE: ['DRAFT'],
@@ -61,12 +68,15 @@ const ROLLBACK_TRANSITIONS: Record<string, string[]> = {
   TERMINATED: ['DRAFT'],
 }
 
-// Special: owner can always terminate
 const SPECIAL_TRANSITIONS: Record<string, string[]> = {
   DRAFT: ['TERMINATED'],
   PENDING_SIGNATURE: ['TERMINATED'],
   SIGNED: ['TERMINATED'],
 }
+
+// ============================================
+// Main Component
+// ============================================
 
 export default function ContractDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -109,8 +119,10 @@ export default function ContractDetailPage() {
   }
 
   function updateResident(index: number, field: string, value: string) {
-    setResidents(residents.map((r, i) => i === index ? { ...r, [field]: value } : r))
+    setResidents(residents.map((r, i) => (i === index ? { ...r, [field]: value } : r)))
   }
+
+  // ─── Data Loading ───────────────────────────────────────
 
   const loadContract = useCallback(async () => {
     try {
@@ -131,17 +143,16 @@ export default function ContractDetailPage() {
     loadContract()
   }, [loadContract])
 
-  // Download PDF via signed URL (contractFileUrl stores path OR legacy full URL)
+  // ─── PDF Download (signed URL) ──────────────────────────
+
   async function handleDownloadPdf() {
     if (!contract?.contractFileUrl) return
 
-    // Legacy: if it's already a full URL, open directly
     if (contract.contractFileUrl.startsWith('http')) {
       window.open(contract.contractFileUrl, '_blank')
       return
     }
 
-    // New: it's a storage path — get fresh signed URL
     setDownloadingPdf(true)
     try {
       const res = await fetch(
@@ -160,7 +171,8 @@ export default function ContractDetailPage() {
     }
   }
 
-  // Status change
+  // ─── Status Change ──────────────────────────────────────
+
   async function handleStatusChange(newStatus: string, reason?: string) {
     if (!contract) return
     setUpdatingStatus(true)
@@ -185,7 +197,8 @@ export default function ContractDetailPage() {
     }
   }
 
-  // Owner sign
+  // ─── Owner Sign ─────────────────────────────────────────
+
   async function handleOwnerSign() {
     if (!contract || signingOwner) return
     const confirmed = window.confirm('Czy na pewno chcesz potwierdzić swój podpis jako właściciel?')
@@ -212,12 +225,12 @@ export default function ContractDetailPage() {
     }
   }
 
-  // Open clauses modal before generating
+  // ─── Generate Contract PDF (HTML) ───────────────────────
+
   function handleGeneratePdf() {
     setShowClausesModal(true)
   }
 
-  // Actually generate the contract with selected clauses
   async function doGeneratePdf() {
     setShowClausesModal(false)
     setGeneratingPdf(true)
@@ -225,7 +238,10 @@ export default function ContractDetailPage() {
       const res = await fetch(`/api/contracts/${contract.id}/generate-pdf`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clauses, residents: clauses.maxPersons ? residents.filter(r => r.firstName || r.lastName) : [] }),
+        body: JSON.stringify({
+          clauses,
+          residents: clauses.maxPersons ? residents.filter((r) => r.firstName || r.lastName) : [],
+        }),
       })
       if (!res.ok) {
         alert('Błąd generowania umowy')
@@ -245,12 +261,12 @@ export default function ContractDetailPage() {
     }
   }
 
-  // Upload signed PDF
+  // ─── Upload Signed PDF ──────────────────────────────────
+
   async function handleUploadPdf(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file || !contract) return
 
-    // Overwrite confirmation
     if (contract.contractFileUrl) {
       const confirmed = window.confirm(
         'Ten kontrakt ma już załączony plik PDF.\n\nCzy na pewno chcesz go nadpisać?\nStary plik zostanie usunięty.'
@@ -285,7 +301,6 @@ export default function ContractDetailPage() {
         return
       }
 
-      // Update contract with file URL
       const updateRes = await fetch(`/api/contracts/${contract.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -300,10 +315,11 @@ export default function ContractDetailPage() {
       alert('Błąd połączenia')
     } finally {
       setUploadingPdf(false)
-      // Reset input
       e.target.value = ''
     }
   }
+
+  // ─── Loading / Error States ─────────────────────────────
 
   if (loading) {
     return (
@@ -330,6 +346,8 @@ export default function ContractDetailPage() {
     )
   }
 
+  // ─── Derived Values ─────────────────────────────────────
+
   const cStatus = STATUS_CONFIG[contract.status] || STATUS_CONFIG.DRAFT
   const StatusIcon = cStatus.icon
   const totalMonthly =
@@ -342,9 +360,15 @@ export default function ContractDetailPage() {
     ? Math.ceil((new Date(contract.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null
 
+  const showLifecycle = ['SIGNED', 'ACTIVE', 'EXPIRED', 'TERMINATED'].includes(contract.status)
+
+  // ─── RENDER ─────────────────────────────────────────────
+
   return (
     <div className="w-full max-w-4xl mx-auto">
-      {/* Header */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* HEADER                                              */}
+      {/* ═══════════════════════════════════════════════════ */}
       <div className="mb-6">
         <Link
           href="/contracts"
@@ -357,58 +381,54 @@ export default function ContractDetailPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
-              {contract.tenant.firstName} {contract.tenant.lastName}
+              {contract.property?.name || 'Umowa'}
             </h1>
-            <p className="text-gray-500 mt-1">{contract.property.name}</p>
+            <p className="text-gray-500 mt-1">
+              {contract.property?.address}
+              {contract.property?.city ? `, ${contract.property.city}` : ''}
+            </p>
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <Badge className={`${cStatus.color} flex items-center gap-1 text-sm px-3 py-1`}>
+          <div className="flex items-center gap-2">
+            <Badge className={`${cStatus.color} text-sm px-3 py-1 flex items-center gap-1`}>
               <StatusIcon className="h-4 w-4" />
               {cStatus.label}
             </Badge>
-            {contract.contractFileUrl && (
-              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={downloadingPdf}>
-                {downloadingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
-                PDF
-              </Button>
-            )}
+            <span className="text-lg font-bold text-gray-900">
+              {totalMonthly.toLocaleString('pl-PL')} zł
+              <span className="text-sm font-normal text-gray-500">{t.detail.perMonth}</span>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Bucket error */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* BUCKET ERROR BANNER                                 */}
+      {/* ═══════════════════════════════════════════════════ */}
       {bucketError && (
         <Card className="p-4 mb-6 bg-red-50 border-red-200">
-          <div className="flex items-start gap-2 text-red-700">
-            <AlertCircle className="h-5 w-5 mt-0.5 shrink-0" />
-            <div>
-              <p className="font-medium">Błąd Storage</p>
-              <p className="text-sm mt-1">{bucketError}</p>
-            </div>
-          </div>
+          <p className="text-sm text-red-700">{bucketError}</p>
         </Card>
       )}
 
-      {/* Status actions — forward */}
-      {forwardStatuses.length > 0 && (
-        <Card className="p-4 mb-4 bg-blue-50 border-blue-200">
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* STATUS TRANSITIONS                                  */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {(forwardStatuses.length > 0 || specialStatuses.length > 0) && (
+        <Card className="p-5 mb-6 bg-blue-50 border-blue-200">
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-blue-800">{t.actions.changeStatus}:</span>
+            <span className="text-sm text-blue-700 font-medium">Zmień status:</span>
             {forwardStatuses.map((ns) => (
               <Button
                 key={ns}
                 size="sm"
-                variant="outline"
                 onClick={() => handleStatusChange(ns)}
                 disabled={updatingStatus}
-                className="border-blue-300 text-blue-700 hover:bg-blue-100"
               >
                 {updatingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
                 {STATUS_CONFIG[ns]?.label || ns}
               </Button>
             ))}
 
-            {/* Special: terminate */}
             {specialStatuses.includes('TERMINATED') && (
               <Button
                 size="sm"
@@ -426,7 +446,6 @@ export default function ContractDetailPage() {
               </Button>
             )}
 
-            {/* Rollback toggle */}
             {rollbackStatuses.length > 0 && (
               <Button
                 size="sm"
@@ -440,7 +459,6 @@ export default function ContractDetailPage() {
             )}
           </div>
 
-          {/* Rollback options */}
           {showRollback && rollbackStatuses.length > 0 && (
             <div className="mt-3 pt-3 border-t border-blue-200 flex flex-wrap items-center gap-3">
               <span className="text-sm text-orange-700 flex items-center gap-1">
@@ -468,7 +486,9 @@ export default function ContractDetailPage() {
         </Card>
       )}
 
-      {/* Signing status */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* SIGNING STATUS                                      */}
+      {/* ═══════════════════════════════════════════════════ */}
       <Card className="p-5 mb-6">
         <h3 className="text-sm font-medium text-gray-500 mb-3 flex items-center gap-2">
           <Shield className="h-4 w-4" />
@@ -478,39 +498,39 @@ export default function ContractDetailPage() {
           {/* Owner signing */}
           <div
             className={`p-3 rounded-lg border ${
-              contract.signedByOwner
-                ? 'bg-green-50 border-green-200'
-                : 'bg-blue-50 border-blue-200'
+              contract.signedByOwner ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
               {contract.signedByOwner ? (
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               ) : (
-                <Clock className="h-5 w-5 text-blue-500" />
+                <Clock className="h-5 w-5 text-gray-400" />
               )}
-              <span className="font-medium text-sm">Właściciel (Ty)</span>
+              <span className="font-medium text-sm">Właściciel</span>
             </div>
-            {contract.signedByOwner ? (
-              <p className="text-xs text-green-600">
-                ✅ Podpisano{' '}
-                {contract.ownerSignedAt
-                  ? new Date(contract.ownerSignedAt).toLocaleDateString('pl-PL')
-                  : ''}
-              </p>
-            ) : (
+            <p className="text-xs text-gray-500">
+              {contract.signedByOwner
+                ? `Podpisano ${
+                    contract.ownerSignedAt
+                      ? new Date(contract.ownerSignedAt).toLocaleDateString('pl-PL')
+                      : ''
+                  }`
+                : 'Oczekuje na podpis'}
+            </p>
+            {!contract.signedByOwner && (
               <Button
                 size="sm"
+                className="mt-2"
                 onClick={handleOwnerSign}
                 disabled={signingOwner}
-                className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
               >
                 {signingOwner ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                 ) : (
                   <PenTool className="h-4 w-4 mr-1" />
                 )}
-                Potwierdź podpis
+                Podpisz jako właściciel
               </Button>
             )}
           </div>
@@ -520,48 +540,37 @@ export default function ContractDetailPage() {
             className={`p-3 rounded-lg border ${
               contract.signedByTenant
                 ? 'bg-green-50 border-green-200'
-                : 'bg-gray-50 border-gray-200'
+                : 'bg-yellow-50 border-yellow-200'
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
               {contract.signedByTenant ? (
                 <CheckCircle2 className="h-5 w-5 text-green-600" />
               ) : (
-                <Clock className="h-5 w-5 text-gray-400" />
+                <Clock className="h-5 w-5 text-yellow-500" />
               )}
               <span className="font-medium text-sm">Najemca</span>
             </div>
             <p className="text-xs text-gray-500">
               {contract.signedByTenant
-                ? `✅ Podpisano ${
+                ? `Podpisano ${
                     contract.tenantSignedAt
                       ? new Date(contract.tenantSignedAt).toLocaleDateString('pl-PL')
                       : ''
                   }`
-                : '⏳ Oczekuje na podpis najemcy'}
+                : 'Oczekuje na podpis najemcy'}
             </p>
           </div>
         </div>
-
-        {contract.signedByOwner && contract.signedByTenant && (
-          <div className="mt-3 p-2 bg-green-50 rounded text-sm text-green-700 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4" />
-            Obie strony podpisały umowę
-          </div>
-        )}
       </Card>
 
-      {/* PDF actions */}
-      <Card className="p-4 mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-gray-700">Dokumenty:</span>
-
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleGeneratePdf}
-            disabled={generatingPdf}
-          >
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* PDF ACTIONS                                         */}
+      {/* ═══════════════════════════════════════════════════ */}
+      <Card className="p-5 mb-6">
+        <h3 className="text-sm font-medium text-gray-500 mb-3">Dokument umowy</h3>
+        <div className="flex flex-wrap gap-3">
+          <Button size="sm" onClick={handleGeneratePdf} disabled={generatingPdf}>
             {generatingPdf ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -571,12 +580,7 @@ export default function ContractDetailPage() {
           </Button>
 
           <label>
-            <Button
-              size="sm"
-              variant="outline"
-              asChild
-              disabled={uploadingPdf}
-            >
+            <Button size="sm" variant="outline" asChild disabled={uploadingPdf}>
               <span className="cursor-pointer">
                 {uploadingPdf ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -597,13 +601,20 @@ export default function ContractDetailPage() {
 
           {contract.contractFileUrl && (
             <Button size="sm" variant="outline" onClick={handleDownloadPdf} disabled={downloadingPdf}>
-              {downloadingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+              {downloadingPdf ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
               Pobierz PDF
             </Button>
           )}
         </div>
       </Card>
 
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* CONTRACT INFO + TENANT + PROPERTY + FINANCIAL       */}
+      {/* ═══════════════════════════════════════════════════ */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Contract Info */}
         <Card className="p-6">
@@ -614,7 +625,9 @@ export default function ContractDetailPage() {
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-500">Typ umowy</span>
-              <span className="text-gray-900 font-medium">{t.types[contract.type as keyof typeof t.types]}</span>
+              <span className="text-gray-900 font-medium">
+                {t.types[contract.type as keyof typeof t.types]}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">{t.fields.startDate}</span>
@@ -633,21 +646,25 @@ export default function ContractDetailPage() {
             {daysLeft !== null && daysLeft > 0 && (
               <div className="flex justify-between">
                 <span className="text-gray-500">{t.detail.daysLeft}</span>
-                <span className={`font-medium ${daysLeft <= 30 ? 'text-orange-600' : 'text-gray-900'}`}>
+                <span className={`font-medium ${daysLeft <= 30 ? 'text-red-600' : 'text-gray-900'}`}>
                   {daysLeft} dni
                 </span>
               </div>
             )}
             <div className="flex justify-between">
-              <span className="text-gray-500">Źródło</span>
-              <span className="text-gray-900">
-                {contract.contractSource === 'UPLOAD' ? 'Wgrany PDF' : 'Formularz'}
-              </span>
+              <span className="text-gray-500">{t.fields.paymentDay}</span>
+              <span className="text-gray-900">{contract.paymentDay}. dnia miesiąca</span>
             </div>
+            {contract.noticePeriod && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Okres wypowiedzenia</span>
+                <span className="text-gray-900">{contract.noticePeriod} mies.</span>
+              </div>
+            )}
           </div>
         </Card>
 
-        {/* Financial */}
+        {/* Financial Info */}
         <Card className="p-6">
           <h3 className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
             <CreditCard className="h-4 w-4" />
@@ -656,34 +673,36 @@ export default function ContractDetailPage() {
           <div className="space-y-3">
             <div className="flex justify-between">
               <span className="text-gray-500">{t.fields.rentAmount}</span>
-              <span className="text-gray-900">{contract.rentAmount?.toLocaleString('pl-PL')} zł</span>
+              <span className="text-gray-900 font-medium">
+                {contract.rentAmount?.toLocaleString('pl-PL')} zł
+              </span>
             </div>
-            {contract.adminFee > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t.fields.adminFee}</span>
-                <span className="text-gray-900">{contract.adminFee?.toLocaleString('pl-PL')} zł</span>
-              </div>
-            )}
-            {contract.utilitiesAdvance > 0 && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t.fields.utilitiesAdvance}</span>
-                <span className="text-gray-900">{contract.utilitiesAdvance?.toLocaleString('pl-PL')} zł</span>
-              </div>
-            )}
-            <div className="flex justify-between pt-2 border-t">
-              <span className="font-medium text-gray-900">{t.fields.totalMonthly}</span>
-              <span className="font-bold text-lg text-gray-900">{totalMonthly.toLocaleString('pl-PL')} zł</span>
+            <div className="flex justify-between">
+              <span className="text-gray-500">{t.fields.adminFee}</span>
+              <span className="text-gray-900">
+                {contract.adminFee?.toLocaleString('pl-PL')} zł
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-500">{t.fields.utilitiesAdvance}</span>
+              <span className="text-gray-900">
+                {contract.utilitiesAdvance?.toLocaleString('pl-PL')} zł
+              </span>
+            </div>
+            <div className="border-t pt-3 flex justify-between">
+              <span className="text-gray-700 font-medium">Razem miesięcznie</span>
+              <span className="text-gray-900 font-bold text-lg">
+                {totalMonthly.toLocaleString('pl-PL')} zł
+              </span>
             </div>
             {contract.depositAmount && (
               <div className="flex justify-between">
                 <span className="text-gray-500">{t.fields.depositAmount}</span>
-                <span className="text-gray-900">{contract.depositAmount?.toLocaleString('pl-PL')} zł</span>
+                <span className="text-gray-900">
+                  {contract.depositAmount?.toLocaleString('pl-PL')} zł
+                </span>
               </div>
             )}
-            <div className="flex justify-between">
-              <span className="text-gray-500">{t.fields.paymentDay}</span>
-              <span className="text-gray-900">{contract.paymentDay}. {t.fields.dayOfMonth}</span>
-            </div>
           </div>
         </Card>
 
@@ -697,40 +716,29 @@ export default function ContractDetailPage() {
             <div className="flex justify-between">
               <span className="text-gray-500">Imię i nazwisko</span>
               <span className="text-gray-900 font-medium">
-                {contract.tenant.firstName} {contract.tenant.lastName}
+                {contract.tenant?.firstName} {contract.tenant?.lastName}
               </span>
             </div>
-            {contract.tenant.email && (
+            {contract.tenant?.email && (
               <div className="flex justify-between">
-                <span className="text-gray-500">{t.fields.email}</span>
+                <span className="text-gray-500">Email</span>
                 <span className="text-gray-900">{contract.tenant.email}</span>
               </div>
             )}
-            {contract.tenant.phone && (
+            {contract.tenant?.phone && (
               <div className="flex justify-between">
-                <span className="text-gray-500">{t.fields.phone}</span>
+                <span className="text-gray-500">Telefon</span>
                 <span className="text-gray-900">{contract.tenant.phone}</span>
               </div>
             )}
-            {contract.tenant.nationalId && (
+            {contract.tenant?.nationalId && (
               <div className="flex justify-between">
-                <span className="text-gray-500">{contract.tenant.nationalIdType || 'PESEL'}</span>
+                <span className="text-gray-500">
+                  {contract.tenant.nationalIdType || 'PESEL'}
+                </span>
                 <span className="text-gray-900">{contract.tenant.nationalId}</span>
               </div>
             )}
-            {contract.tenant.citizenship && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">{t.fields.citizenship}</span>
-                <span className="text-gray-900">{contract.tenant.citizenship}</span>
-              </div>
-            )}
-            <div className="pt-2">
-              <Link href={`/tenants/${contract.tenant.id}`}>
-                <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-800 p-0">
-                  Zobacz profil najemcy →
-                </Button>
-              </Link>
-            </div>
           </div>
         </Card>
 
@@ -742,18 +750,18 @@ export default function ContractDetailPage() {
           </h3>
           <div className="space-y-3">
             <div className="flex justify-between">
-              <span className="text-gray-500">Nazwa</span>
-              <span className="text-gray-900 font-medium">{contract.property.name}</span>
+              <span className="text-gray-500">Lokal</span>
+              <span className="text-gray-900 font-medium">{contract.property?.name}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Adres</span>
-              <span className="text-gray-900 text-right max-w-[200px]">
-                {contract.property.address}
-                {contract.property.postalCode ? `, ${contract.property.postalCode}` : ''}
-                {contract.property.city ? ` ${contract.property.city}` : ''}
+              <span className="text-gray-900">
+                {contract.property?.address}
+                {contract.property?.postalCode ? `, ${contract.property.postalCode}` : ''}
+                {contract.property?.city ? ` ${contract.property.city}` : ''}
               </span>
             </div>
-            {contract.property.area && (
+            {contract.property?.area && (
               <div className="flex justify-between">
                 <span className="text-gray-500">Powierzchnia</span>
                 <span className="text-gray-900">{contract.property.area} m²</span>
@@ -771,13 +779,60 @@ export default function ContractDetailPage() {
         )}
       </div>
 
-      {/* Attachments */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* V9: CONTRACT LIFECYCLE — PROTOCOLS & ANNEXES        */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {showLifecycle && (
+        <div className="mt-8">
+          <div className="border-t pt-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-blue-600" />
+              Cykl życia umowy
+            </h2>
+            <p className="text-sm text-gray-500 mt-1">
+              Protokoły zdawczo-odbiorcze i aneksy do umowy
+            </p>
+          </div>
+
+          {/* Protocols */}
+          <div className="mb-8">
+            <ProtocolsList
+              contractId={contract.id}
+              onCreateProtocol={(type) => {
+                // TODO: Open protocol creation modal
+                alert(`Tworzenie protokołu: ${type === 'MOVE_IN' ? 'Wydanie' : 'Zwrot'} lokalu\n\n(Modal tworzenia protokołu — do implementacji)`)
+              }}
+            />
+          </div>
+
+          {/* Annexes */}
+          {['ACTIVE', 'SIGNED'].includes(contract.status) && (
+            <div className="mb-8">
+              <AnnexesList
+                contractId={contract.id}
+                onCreateAnnex={() => {
+                  // TODO: Open annex creation modal
+                  alert('Tworzenie nowego aneksu\n\n(Modal tworzenia aneksu — do implementacji)')
+                }}
+                onContractUpdated={loadContract}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* ATTACHMENTS                                         */}
+      {/* ═══════════════════════════════════════════════════ */}
       {contract.attachments && contract.attachments.length > 0 && (
         <Card className="p-6 mt-6">
           <h3 className="text-sm font-medium text-gray-500 mb-4">{t.detail.attachmentsList}</h3>
           <div className="space-y-2">
             {contract.attachments.map((att: any) => (
-              <div key={att.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+              <div
+                key={att.id}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+              >
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-gray-400" />
                   <span className="text-sm">{att.label || att.fileName || 'Załącznik'}</span>
@@ -788,16 +843,22 @@ export default function ContractDetailPage() {
                   )}
                 </div>
                 {att.fileUrl && (
-                  <Button variant="ghost" size="sm" onClick={async () => {
-                    if (att.fileUrl.startsWith('http')) {
-                      window.open(att.fileUrl, '_blank')
-                    } else {
-                      const res = await fetch(`/api/contracts/download?path=${encodeURIComponent(att.fileUrl)}&contractId=${contract.id}`)
-                      const data = await res.json()
-                      if (data.url) window.open(data.url, '_blank')
-                      else alert(data.error || 'Błąd pobierania')
-                    }
-                  }}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={async () => {
+                      if (att.fileUrl.startsWith('http')) {
+                        window.open(att.fileUrl, '_blank')
+                      } else {
+                        const res = await fetch(
+                          `/api/contracts/download?path=${encodeURIComponent(att.fileUrl)}&contractId=${contract.id}`
+                        )
+                        const data = await res.json()
+                        if (data.url) window.open(data.url, '_blank')
+                        else alert(data.error || 'Błąd pobierania')
+                      }
+                    }}
+                  >
                     <Download className="h-4 w-4" />
                   </Button>
                 )}
@@ -807,7 +868,9 @@ export default function ContractDetailPage() {
         </Card>
       )}
 
-      {/* Status History */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* STATUS HISTORY                                      */}
+      {/* ═══════════════════════════════════════════════════ */}
       {contract.statusHistory && contract.statusHistory.length > 0 && (
         <Card className="p-6 mt-6">
           <h3 className="text-sm font-medium text-gray-500 mb-4 flex items-center gap-2">
@@ -830,9 +893,7 @@ export default function ContractDetailPage() {
                   <span className="text-gray-500">{oldLabel || '—'}</span>
                   <span className="text-gray-400">→</span>
                   <span className="font-medium text-gray-900">{newLabel}</span>
-                  {h.reason && (
-                    <span className="text-gray-400 text-xs">({h.reason})</span>
-                  )}
+                  {h.reason && <span className="text-gray-400 text-xs">({h.reason})</span>}
                 </div>
               )
             })}
@@ -840,137 +901,88 @@ export default function ContractDetailPage() {
         </Card>
       )}
 
-      {/* ===== CLAUSES MODAL ===== */}
+      {/* ═══════════════════════════════════════════════════ */}
+      {/* CLAUSES MODAL                                       */}
+      {/* ═══════════════════════════════════════════════════ */}
       {showClausesModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 sm:p-4">
-          <div className="bg-white sm:rounded-xl rounded-t-xl shadow-2xl w-full sm:max-w-lg max-h-[90vh] sm:max-h-[85vh] flex flex-col">
-            {/* Sticky header */}
-            <div className="p-4 sm:p-6 border-b flex-shrink-0">
-              <h2 className="text-lg font-semibold text-gray-900">Warunki umowy</h2>
-              <p className="text-sm text-gray-500 mt-1">Zaznacz ograniczenia, które chcesz uwzględnić w umowie</p>
-            </div>
-
-            {/* Scrollable content */}
-            <div className="p-4 sm:p-6 space-y-3 overflow-y-auto flex-1 min-h-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <Card className="w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 mx-4">
+            <h3 className="text-lg font-semibold mb-4">Wybierz klauzule dodatkowe</h3>
+            <div className="space-y-3">
               {[
-                { key: 'noPets', label: 'Zakaz trzymania zwierząt', desc: 'Najemca nie może trzymać zwierząt bez zgody' },
-                { key: 'noSmoking', label: 'Zakaz palenia', desc: 'Zakaz palenia tytoniu i e-papierosów w lokalu' },
-                { key: 'quietHours', label: 'Cisza nocna 22:00–6:00', desc: 'Obowiązek przestrzegania ciszy nocnej' },
-                { key: 'noChanges', label: 'Zakaz zmian w lokalu', desc: 'Zakaz malowania, wiercenia itp. bez zgody' },
-                { key: 'insurance', label: 'Obowiązek ubezpieczenia OC', desc: 'Najemca musi posiadać ubezpieczenie' },
-                { key: 'noBusinessUse', label: 'Zakaz działalności gospodarczej', desc: 'Lokal wyłącznie na cele mieszkalne' },
-                { key: 'cleaningOnExit', label: 'Sprzątanie przy zdaniu', desc: 'Lokal oddany czysty i wysprzątany' },
-                { key: 'keyReturn', label: 'Zwrot kluczy', desc: 'Obowiązek zwrotu wszystkich kompletów kluczy' },
-                { key: 'parkingIncluded', label: 'Miejsce parkingowe w cenie', desc: 'Najemca ma prawo do miejsca parkingowego' },
-                { key: 'furnished', label: 'Lokal umeblowany', desc: 'Wynajem z meblami i sprzętem AGD/RTV' },
-              ].map((item) => (
-                <label
-                  key={item.key}
-                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    clauses[item.key] ? 'border-blue-300 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
+                { key: 'noPets', label: 'Zakaz trzymania zwierząt' },
+                { key: 'noSmoking', label: 'Zakaz palenia' },
+                { key: 'quietHours', label: 'Cisza nocna (22:00–6:00)' },
+                { key: 'noChanges', label: 'Zakaz zmian bez zgody' },
+                { key: 'insurance', label: 'Obowiązkowe ubezpieczenie' },
+                { key: 'maxPersons', label: 'Maksymalna liczba osób' },
+                { key: 'noBusinessUse', label: 'Zakaz działalności gospodarczej' },
+                { key: 'cleaningOnExit', label: 'Czyszczenie przy wyprowadzce' },
+                { key: 'keyReturn', label: 'Zwrot kluczy' },
+                { key: 'parkingIncluded', label: 'Miejsce parkingowe w cenie' },
+                { key: 'furnished', label: 'Lokal umeblowany' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={clauses[item.key] || false}
-                    onChange={(e) => setClauses({ ...clauses, [item.key]: e.target.checked })}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    checked={clauses[key] || false}
+                    onChange={(e) => setClauses({ ...clauses, [key]: e.target.checked })}
+                    className="rounded"
                   />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">{item.label}</div>
-                    <div className="text-xs text-gray-500">{item.desc}</div>
-                  </div>
+                  <span className="text-sm">{label}</span>
                 </label>
               ))}
+            </div>
 
-              {/* === MAXPERSONS — expandable with residents list === */}
-              <div className={`rounded-lg border transition-colors ${clauses.maxPersons ? 'border-blue-300 bg-blue-50' : 'border-gray-200'}`}>
-                <label className="flex items-start gap-3 p-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={clauses.maxPersons || false}
-                    onChange={(e) => {
-                      setClauses({ ...clauses, maxPersons: e.target.checked })
-                      if (e.target.checked && residents.length === 0) addResident()
-                    }}
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Ograniczenie osób w lokalu</div>
-                    <div className="text-xs text-gray-500">Tylko osoby wskazane w umowie — dodaj współlokatorów</div>
-                  </div>
-                </label>
-
-                {clauses.maxPersons && (
-                  <div className="px-3 pb-3 space-y-2">
-                    <div className="border-t border-blue-200 pt-3">
-                      <p className="text-xs text-gray-500 mb-2">
-                        Najemca jest wpisany automatycznie. Dodaj dodatkowe osoby zamieszkujące lokal:
-                      </p>
-
-                      {residents.map((r, i) => (
-                        <div key={i} className="flex items-start gap-2 mb-2">
-                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                            <input
-                              type="text"
-                              placeholder="Imię"
-                              value={r.firstName}
-                              onChange={(e) => updateResident(i, 'firstName', e.target.value)}
-                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Nazwisko"
-                              value={r.lastName}
-                              onChange={(e) => updateResident(i, 'lastName', e.target.value)}
-                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                            <input
-                              type="text"
-                              placeholder="PESEL / nr dokumentu"
-                              value={r.pesel}
-                              onChange={(e) => updateResident(i, 'pesel', e.target.value)}
-                              className="rounded border border-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            />
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => removeResident(i)}
-                            className="text-red-400 hover:text-red-600 px-1 py-1.5 text-xs font-bold"
-                            title="Usuń"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      ))}
-
+            {/* Residents (if maxPersons selected) */}
+            {clauses.maxPersons && (
+              <div className="mt-4 pt-4 border-t">
+                <h4 className="text-sm font-medium mb-2">Osoby zamieszkujące</h4>
+                {residents.map((r, i) => (
+                  <div key={i} className="grid grid-cols-3 gap-2 mb-2">
+                    <input
+                      placeholder="Imię"
+                      value={r.firstName}
+                      onChange={(e) => updateResident(i, 'firstName', e.target.value)}
+                      className="rounded border px-2 py-1 text-sm"
+                    />
+                    <input
+                      placeholder="Nazwisko"
+                      value={r.lastName}
+                      onChange={(e) => updateResident(i, 'lastName', e.target.value)}
+                      className="rounded border px-2 py-1 text-sm"
+                    />
+                    <div className="flex gap-1">
+                      <input
+                        placeholder="PESEL"
+                        value={r.pesel}
+                        onChange={(e) => updateResident(i, 'pesel', e.target.value)}
+                        className="rounded border px-2 py-1 text-sm flex-1"
+                      />
                       <button
-                        type="button"
-                        onClick={addResident}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium mt-1"
+                        onClick={() => removeResident(i)}
+                        className="text-red-500 text-sm px-1 hover:bg-red-50 rounded"
                       >
-                        <span className="text-lg leading-none">+</span> Dodaj osobę
+                        ✕
                       </button>
                     </div>
                   </div>
-                )}
+                ))}
+                <Button size="sm" variant="outline" onClick={addResident}>
+                  + Dodaj osobę
+                </Button>
               </div>
-            </div>
+            )}
 
-            {/* Sticky footer */}
-            <div className="p-4 sm:p-6 border-t flex items-center justify-between flex-shrink-0 bg-white sm:rounded-b-xl">
-              <button
-                onClick={() => setShowClausesModal(false)}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
+            <div className="flex gap-3 mt-6">
+              <Button onClick={doGeneratePdf} className="flex-1">
+                Generuj PDF
+              </Button>
+              <Button variant="outline" onClick={() => setShowClausesModal(false)}>
                 Anuluj
-              </button>
-              <Button onClick={doGeneratePdf}>
-                <Printer className="h-4 w-4 mr-2" />
-                Generuj umowę
               </Button>
             </div>
-          </div>
+          </Card>
         </div>
       )}
     </div>
