@@ -7,9 +7,6 @@ import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import { planFromPriceId, type SubscriptionPlan } from '@/lib/subscription'
 
-// Must disable body parsing to get raw body for signature verification
-export const config = { api: { bodyParser: false } }
-
 // ── Helpers ──────────────────────────────────────────────────────
 
 async function getUserIdByCustomer(customerId: string): Promise<string | null> {
