@@ -116,7 +116,6 @@ enum InvitationStatus {
   REVOKED
 }
 
-<<<<<<< HEAD
 enum SubscriptionPlan {
   FREE
   PRO
@@ -124,11 +123,6 @@ enum SubscriptionPlan {
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
-=======
-// ╔══════════════════════════════════════════════════════════════╗
-// ║  НЕДВИЖИМОСТЬ                                                ║
-// ╚══════════════════════════════════════════════════════════════╝
->>>>>>> 48cbd2d1634e8e3f29843e87322a2b333bb75df4
 
 model Property {
   id          String         @id @default(uuid())
