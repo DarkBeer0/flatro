@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { useLocale } from '@/lib/i18n/context'
 import { locales, localeNames, Locale } from '@/lib/i18n/dictionaries'
 import { createClient } from '@/lib/supabase/client'
+import BillingTab from '@/components/settings/billing-tab'
 
 interface UserData {
   id: string
@@ -581,9 +582,10 @@ function SettingsContent() {
           {/* Billing */}
           {activeTab === 'billing' && (
             <Card className="p-6">
-              <h2 className="text-lg font-semibold mb-1">Способы оплаты</h2>
-              <p className="text-sm text-gray-500 mb-6">Управление картами и подписками</p>
-              <p className="text-gray-400 text-sm">Функционал в разработке</p>
+              <h2 className="text-lg font-semibold mb-4">
+                {t.settings?.billing || 'Платежи'}
+              </h2>
+              <BillingTab />
             </Card>
           )}
 

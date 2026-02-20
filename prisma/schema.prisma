@@ -55,6 +55,11 @@ model User {
   stripeAccountId String?
   stripeOnboarded Boolean @default(false)
 
+  subscriptionPlan     SubscriptionPlan @default(FREE)
+  stripeCustomerId     String?          @unique
+  stripeSubscriptionId String?
+
+
   // Связи для OWNER
   properties Property[]
   tenants    Tenant[]     @relation("OwnerTenants")
@@ -109,6 +114,12 @@ enum InvitationStatus {
   ACCEPTED
   EXPIRED
   REVOKED
+}
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  BUSINESS
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============

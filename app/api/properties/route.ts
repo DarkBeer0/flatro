@@ -1,7 +1,8 @@
-// app/api/properties/route.ts
+// app/api/properties/route.ts  (V8 — with subscription limit check)
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { requireUser } from '@/lib/auth'
+import { canAddProperty, type SubscriptionPlan } from '@/lib/subscription'
 
 // GET /api/properties - получить список недвижимости
 export async function GET() {
@@ -17,17 +18,17 @@ export async function GET() {
             id: true,
             firstName: true,
             lastName: true,
-          }
+          },
         },
         contracts: {
           where: { status: 'ACTIVE' },
           select: {
             id: true,
             rentAmount: true,
-          }
-        }
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { createdAt: 'desc' },
     })
 
     return NextResponse.json(properties)
@@ -40,10 +41,42 @@ export async function GET() {
   }
 }
 
-// POST /api/properties - создать недвижимость
+// POST /api/properties - создать недвижимость (with plan limit check)
 export async function POST(request: NextRequest) {
   try {
     const user = await requireUser()
+
+    // ── Subscription limit check ──────────────────────────────────
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        subscriptionPlan: true,
+        _count: { select: { properties: true } },
+      },
+    })
+
+    if (!dbUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
+
+    const plan = (dbUser.subscriptionPlan ?? 'FREE') as SubscriptionPlan
+    const currentCount = dbUser._count.properties
+    const check = canAddProperty(plan, currentCount)
+
+    if (!check.allowed) {
+      return NextResponse.json(
+        {
+          error: 'PLAN_LIMIT_REACHED',
+          message: `Twój plan ${plan} pozwala na maksymalnie ${check.limit} nieruchomości. Zaktualizuj plan, aby dodać więcej.`,
+          plan,
+          limit: check.limit,
+          current: check.current,
+        },
+        { status: 403 }
+      )
+    }
+    // ── End limit check ───────────────────────────────────────────
+
     const body = await request.json()
 
     const property = await prisma.property.create({
@@ -58,7 +91,7 @@ export async function POST(request: NextRequest) {
         floor: body.floor ? parseInt(body.floor) : null,
         description: body.description || null,
         status: body.status || 'VACANT',
-      }
+      },
     })
 
     return NextResponse.json(property, { status: 201 })
