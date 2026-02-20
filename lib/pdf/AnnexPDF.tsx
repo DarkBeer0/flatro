@@ -10,11 +10,15 @@ import {
   View,
   StyleSheet,
 } from '@react-pdf/renderer'
+import { registerFonts } from './fonts'
 import type {
   AnnexType,
   RentChangeData,
   ExtensionChangeData,
 } from '@/lib/contracts/lifecycle-types'
+
+// Register Roboto font (Polish diacritics: ąćęłńóśźż)
+registerFonts()
 
 // ============================================
 // Styles
@@ -24,7 +28,7 @@ const styles = StyleSheet.create({
   page: {
     padding: 40,
     fontSize: 10,
-    fontFamily: 'Helvetica',
+    fontFamily: 'Roboto',
     lineHeight: 1.6,
   },
   title: {
@@ -32,7 +36,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 4,
-    fontFamily: 'Helvetica-Bold',
   },
   subtitle: {
     fontSize: 11,
@@ -43,7 +46,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 11,
     fontWeight: 'bold',
-    fontFamily: 'Helvetica-Bold',
     marginTop: 16,
     marginBottom: 6,
     borderBottomWidth: 1,
@@ -61,7 +63,7 @@ const styles = StyleSheet.create({
   },
   label: {
     width: '35%',
-    fontFamily: 'Helvetica-Bold',
+    fontWeight: 'bold',
     fontSize: 9,
   },
   value: {
@@ -75,7 +77,7 @@ const styles = StyleSheet.create({
     lineHeight: 1.8,
   },
   bold: {
-    fontFamily: 'Helvetica-Bold',
+    fontWeight: 'bold',
   },
   signatureRow: {
     flexDirection: 'row',

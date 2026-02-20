@@ -161,6 +161,7 @@ export async function POST(
           keysHandedOver: (keysHandedOver || []) as any,
           roomsCondition: (roomsCondition || []) as any,
           generalNotes: generalNotes || null,
+          photos: (body.photos || []) as any,
         },
       })
 

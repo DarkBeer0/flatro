@@ -377,6 +377,9 @@ model Protocol {
   // Uwagi ogólne
   generalNotes String? @map("general_notes")
 
+  // JSONB: Array of { url, caption?, roomName? }
+  photos Json @default("[]")
+
   // PDF file reference (Supabase storage path)
   pdfUrl String? @map("pdf_url")
 

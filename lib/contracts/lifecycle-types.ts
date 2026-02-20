@@ -31,6 +31,12 @@ export interface RoomCondition {
   items: RoomConditionItem[]
 }
 
+export interface ProtocolPhoto {
+  url: string
+  caption?: string
+  roomName?: string
+}
+
 export interface CreateProtocolInput {
   type: ProtocolType
   date: string       // ISO date
@@ -38,6 +44,7 @@ export interface CreateProtocolInput {
   keysHandedOver: ProtocolKey[]
   roomsCondition: RoomCondition[]
   generalNotes?: string
+  photos?: ProtocolPhoto[]
 }
 
 export interface ProtocolWithRelations {
@@ -49,6 +56,7 @@ export interface ProtocolWithRelations {
   keysHandedOver: ProtocolKey[]
   roomsCondition: RoomCondition[]
   generalNotes: string | null
+  photos: ProtocolPhoto[]
   pdfUrl: string | null
   createdAt: string
   contract: {

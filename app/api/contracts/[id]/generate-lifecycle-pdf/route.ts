@@ -74,6 +74,7 @@ export async function GET(
         keysHandedOver: (protocol.keysHandedOver as any) || [],
         roomsCondition: (protocol.roomsCondition as any) || [],
         generalNotes: protocol.generalNotes,
+        photos: (protocol.photos as any) || [],
       }
 
       pdfBuffer = await renderToBuffer(React.createElement(ProtocolPDF, { data }) as any)

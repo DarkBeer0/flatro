@@ -143,6 +143,16 @@ export default function ContractDetailPage() {
     loadContract()
   }, [loadContract])
 
+  // Lock body scroll when clauses modal is open
+  useEffect(() => {
+    if (showClausesModal) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => { document.body.style.overflow = '' }
+  }, [showClausesModal])
+
   // ─── PDF Download (signed URL) ──────────────────────────
 
   async function handleDownloadPdf() {
@@ -905,81 +915,99 @@ export default function ContractDetailPage() {
       {/* CLAUSES MODAL                                       */}
       {/* ═══════════════════════════════════════════════════ */}
       {showClausesModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <Card className="w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 mx-4">
-            <h3 className="text-lg font-semibold mb-4">Wybierz klauzule dodatkowe</h3>
-            <div className="space-y-3">
-              {[
-                { key: 'noPets', label: 'Zakaz trzymania zwierząt' },
-                { key: 'noSmoking', label: 'Zakaz palenia' },
-                { key: 'quietHours', label: 'Cisza nocna (22:00–6:00)' },
-                { key: 'noChanges', label: 'Zakaz zmian bez zgody' },
-                { key: 'insurance', label: 'Obowiązkowe ubezpieczenie' },
-                { key: 'maxPersons', label: 'Maksymalna liczba osób' },
-                { key: 'noBusinessUse', label: 'Zakaz działalności gospodarczej' },
-                { key: 'cleaningOnExit', label: 'Czyszczenie przy wyprowadzce' },
-                { key: 'keyReturn', label: 'Zwrot kluczy' },
-                { key: 'parkingIncluded', label: 'Miejsce parkingowe w cenie' },
-                { key: 'furnished', label: 'Lokal umeblowany' },
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={clauses[key] || false}
-                    onChange={(e) => setClauses({ ...clauses, [key]: e.target.checked })}
-                    className="rounded"
-                  />
-                  <span className="text-sm">{label}</span>
-                </label>
-              ))}
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 pt-8 pb-8"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowClausesModal(false) }}
+        >
+          <Card className="w-full max-w-lg my-auto shadow-xl">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b bg-gray-50 rounded-t-lg">
+              <h3 className="text-lg font-semibold text-gray-900">Wybierz klauzule dodatkowe</h3>
+              <button onClick={() => setShowClausesModal(false)} className="p-1.5 rounded-lg hover:bg-gray-200 transition-colors">
+                <svg className="h-5 w-5 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
-            {/* Residents (if maxPersons selected) */}
-            {clauses.maxPersons && (
-              <div className="mt-4 pt-4 border-t">
-                <h4 className="text-sm font-medium mb-2">Osoby zamieszkujące</h4>
-                {residents.map((r, i) => (
-                  <div key={i} className="grid grid-cols-3 gap-2 mb-2">
+            {/* Body */}
+            <div className="p-5 max-h-[60vh] overflow-y-auto">
+              <div className="space-y-1">
+                {[
+                  { key: 'noPets', label: 'Zakaz trzymania zwierząt' },
+                  { key: 'noSmoking', label: 'Zakaz palenia' },
+                  { key: 'quietHours', label: 'Cisza nocna (22:00–6:00)' },
+                  { key: 'noChanges', label: 'Zakaz zmian bez zgody' },
+                  { key: 'insurance', label: 'Obowiązkowe ubezpieczenie' },
+                  { key: 'maxPersons', label: 'Maksymalna liczba osób' },
+                  { key: 'noBusinessUse', label: 'Zakaz działalności gospodarczej' },
+                  { key: 'cleaningOnExit', label: 'Czyszczenie przy wyprowadzce' },
+                  { key: 'keyReturn', label: 'Zwrot kluczy' },
+                  { key: 'parkingIncluded', label: 'Miejsce parkingowe w cenie' },
+                  { key: 'furnished', label: 'Lokal umeblowany' },
+                ].map(({ key, label }) => (
+                  <label
+                    key={key}
+                    className="flex items-center gap-3 p-2.5 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
                     <input
-                      placeholder="Imię"
-                      value={r.firstName}
-                      onChange={(e) => updateResident(i, 'firstName', e.target.value)}
-                      className="rounded border px-2 py-1 text-sm"
+                      type="checkbox"
+                      checked={clauses[key] || false}
+                      onChange={(e) => setClauses({ ...clauses, [key]: e.target.checked })}
+                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <input
-                      placeholder="Nazwisko"
-                      value={r.lastName}
-                      onChange={(e) => updateResident(i, 'lastName', e.target.value)}
-                      className="rounded border px-2 py-1 text-sm"
-                    />
-                    <div className="flex gap-1">
-                      <input
-                        placeholder="PESEL"
-                        value={r.pesel}
-                        onChange={(e) => updateResident(i, 'pesel', e.target.value)}
-                        className="rounded border px-2 py-1 text-sm flex-1"
-                      />
-                      <button
-                        onClick={() => removeResident(i)}
-                        className="text-red-500 text-sm px-1 hover:bg-red-50 rounded"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  </div>
+                    <span className="text-sm text-gray-700">{label}</span>
+                  </label>
                 ))}
-                <Button size="sm" variant="outline" onClick={addResident}>
-                  + Dodaj osobę
-                </Button>
               </div>
-            )}
 
-            <div className="flex gap-3 mt-6">
-              <Button onClick={doGeneratePdf} className="flex-1">
-                Generuj PDF
-              </Button>
+              {clauses.maxPersons && (
+                <div className="mt-4 pt-4 border-t">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Osoby zamieszkujące</h4>
+                  {residents.map((r, i) => (
+                    <div key={i} className="grid grid-cols-3 gap-2 mb-2">
+                      <input
+                        placeholder="Imię"
+                        value={r.firstName}
+                        onChange={(e) => updateResident(i, 'firstName', e.target.value)}
+                        className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        placeholder="Nazwisko"
+                        value={r.lastName}
+                        onChange={(e) => updateResident(i, 'lastName', e.target.value)}
+                        className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex gap-1">
+                        <input
+                          placeholder="PESEL"
+                          value={r.pesel}
+                          onChange={(e) => updateResident(i, 'pesel', e.target.value)}
+                          className="rounded-md border border-gray-200 px-2.5 py-1.5 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                        <button
+                          onClick={() => removeResident(i)}
+                          className="text-red-500 text-sm px-1.5 hover:bg-red-50 rounded transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  <Button size="sm" variant="outline" onClick={addResident}>
+                    + Dodaj osobę
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 p-5 border-t bg-gray-50 rounded-b-lg">
               <Button variant="outline" onClick={() => setShowClausesModal(false)}>
                 Anuluj
+              </Button>
+              <Button onClick={doGeneratePdf}>
+                Generuj PDF
               </Button>
             </div>
           </Card>

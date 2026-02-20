@@ -1,6 +1,6 @@
 // lib/pdf/ProtocolPDF.tsx
 // Flatro — V9: Handover Protocol PDF (Protokół zdawczo-odbiorczy)
-// Uses @react-pdf/renderer for server-side PDF generation
+// Uses @react-pdf/renderer with Roboto font for Polish character support
 
 import React from 'react'
 import {
@@ -8,15 +8,19 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
-  Font,
 } from '@react-pdf/renderer'
+import { registerFonts } from './fonts'
 import type {
   ProtocolMeterReading,
   ProtocolKey,
   RoomCondition,
   ProtocolType,
 } from '@/lib/contracts/lifecycle-types'
+
+// Register Roboto font (Polish diacritics: ąćęłńóśźż)
+registerFonts()
 
 // ============================================
 // Styles
@@ -26,7 +30,7 @@ const styles = StyleSheet.create({
   page: {
     padding: 40,
     fontSize: 10,
-    fontFamily: 'Helvetica',
+    fontFamily: 'Roboto',
     lineHeight: 1.5,
   },
   title: {
@@ -34,7 +38,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 4,
-    fontFamily: 'Helvetica-Bold',
   },
   subtitle: {
     fontSize: 11,
@@ -45,7 +48,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 11,
     fontWeight: 'bold',
-    fontFamily: 'Helvetica-Bold',
     marginTop: 16,
     marginBottom: 6,
     borderBottomWidth: 1,
@@ -58,7 +60,7 @@ const styles = StyleSheet.create({
   },
   label: {
     width: '35%',
-    fontFamily: 'Helvetica-Bold',
+    fontWeight: 'bold',
     fontSize: 9,
   },
   value: {
@@ -73,6 +75,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#333',
   },
+  tableHeaderCell: {
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
   tableRow: {
     flexDirection: 'row',
     paddingVertical: 3,
@@ -82,6 +88,11 @@ const styles = StyleSheet.create({
   },
   tableCell: {
     fontSize: 9,
+  },
+  roomTitle: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    marginBottom: 3,
   },
   signatureRow: {
     flexDirection: 'row',
@@ -109,6 +120,35 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: 4,
     fontStyle: 'italic',
+  },
+  // Photo styles
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  photoItem: {
+    width: '48%',
+    marginBottom: 10,
+  },
+  photoImage: {
+    width: '100%',
+    height: 180,
+    objectFit: 'cover',
+    borderRadius: 4,
+    border: '1px solid #ddd',
+  },
+  photoCaption: {
+    fontSize: 8,
+    color: '#555',
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  photoRoom: {
+    fontSize: 8,
+    color: '#888',
+    textAlign: 'center',
   },
 })
 
@@ -143,6 +183,12 @@ function formatDate(date: string | Date): string {
 // Props
 // ============================================
 
+export interface ProtocolPhoto {
+  url: string
+  caption?: string
+  roomName?: string
+}
+
 export interface ProtocolPDFData {
   type: ProtocolType
   date: string | Date
@@ -164,6 +210,7 @@ export interface ProtocolPDFData {
   keysHandedOver: ProtocolKey[]
   roomsCondition: RoomCondition[]
   generalNotes?: string | null
+  photos?: ProtocolPhoto[]
 }
 
 // ============================================
@@ -175,6 +222,8 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
     data.type === 'MOVE_IN'
       ? 'PROTOKÓŁ ZDAWCZO-ODBIORCZY — WYDANIE LOKALU'
       : 'PROTOKÓŁ ZDAWCZO-ODBIORCZY — ZWROT LOKALU'
+
+  const photos = data.photos || []
 
   return (
     <Document>
@@ -221,10 +270,10 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
         ) : (
           <View>
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableCell, { width: '30%' }]}>Typ licznika</Text>
-              <Text style={[styles.tableCell, { width: '30%' }]}>Nr licznika</Text>
-              <Text style={[styles.tableCell, { width: '20%' }]}>Odczyt</Text>
-              <Text style={[styles.tableCell, { width: '20%' }]}>Jednostka</Text>
+              <Text style={[styles.tableHeaderCell, { width: '30%' }]}>Typ licznika</Text>
+              <Text style={[styles.tableHeaderCell, { width: '30%' }]}>Nr licznika</Text>
+              <Text style={[styles.tableHeaderCell, { width: '20%' }]}>Odczyt</Text>
+              <Text style={[styles.tableHeaderCell, { width: '20%' }]}>Jednostka</Text>
             </View>
             {data.meterReadings.map((reading, i) => (
               <View style={styles.tableRow} key={i}>
@@ -235,7 +284,7 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
                   {reading.meterNumber || '—'}
                 </Text>
                 <Text style={[styles.tableCell, { width: '20%' }]}>
-                  {reading.value.toFixed(2)}
+                  {typeof reading.value === 'number' ? reading.value.toFixed(2) : reading.value}
                 </Text>
                 <Text style={[styles.tableCell, { width: '20%' }]}>
                   {reading.meterType === 'ELECTRICITY' ? 'kWh' :
@@ -255,9 +304,9 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
         ) : (
           <View>
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableCell, { width: '50%' }]}>Typ</Text>
-              <Text style={[styles.tableCell, { width: '15%' }]}>Ilość</Text>
-              <Text style={[styles.tableCell, { width: '35%' }]}>Uwagi</Text>
+              <Text style={[styles.tableHeaderCell, { width: '50%' }]}>Typ</Text>
+              <Text style={[styles.tableHeaderCell, { width: '15%' }]}>Ilość</Text>
+              <Text style={[styles.tableHeaderCell, { width: '35%' }]}>Uwagi</Text>
             </View>
             {data.keysHandedOver.map((key, i) => (
               <View style={styles.tableRow} key={i}>
@@ -275,13 +324,11 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
         <Text style={styles.sectionTitle}>§ 5. Stan techniczny lokalu</Text>
         {data.roomsCondition.map((room, ri) => (
           <View key={ri} style={{ marginBottom: 8 }}>
-            <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', marginBottom: 3 }}>
-              {room.roomName}
-            </Text>
+            <Text style={styles.roomTitle}>{room.roomName}</Text>
             <View style={styles.tableHeader}>
-              <Text style={[styles.tableCell, { width: '35%' }]}>Element</Text>
-              <Text style={[styles.tableCell, { width: '25%' }]}>Stan</Text>
-              <Text style={[styles.tableCell, { width: '40%' }]}>Uwagi</Text>
+              <Text style={[styles.tableHeaderCell, { width: '35%' }]}>Element</Text>
+              <Text style={[styles.tableHeaderCell, { width: '25%' }]}>Stan</Text>
+              <Text style={[styles.tableHeaderCell, { width: '40%' }]}>Uwagi</Text>
             </View>
             {room.items.map((item, ii) => (
               <View style={styles.tableRow} key={ii}>
@@ -323,6 +370,30 @@ export function ProtocolPDF({ data }: { data: ProtocolPDFData }) {
           </View>
         </View>
       </Page>
+
+      {/* ═══ DOKUMENTACJA FOTOGRAFICZNA (separate page) ═══ */}
+      {photos.length > 0 && (
+        <Page size="A4" style={styles.page}>
+          <Text style={styles.title}>DOKUMENTACJA FOTOGRAFICZNA</Text>
+          <Text style={styles.subtitle}>
+            Załącznik do protokołu z dnia {formatDate(data.date)}
+          </Text>
+
+          <View style={styles.photoGrid}>
+            {photos.map((photo, i) => (
+              <View key={i} style={styles.photoItem}>
+                <Image style={styles.photoImage} src={photo.url} />
+                {photo.caption && (
+                  <Text style={styles.photoCaption}>{photo.caption}</Text>
+                )}
+                {photo.roomName && (
+                  <Text style={styles.photoRoom}>{photo.roomName}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        </Page>
+      )}
     </Document>
   )
 }

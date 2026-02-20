@@ -1,5 +1,5 @@
 // app/invite/[code]/page.tsx
-// FIXED: All hardcoded Russian strings replaced with i18n dictionary keys (t.invite.*)
+// FIXED: Placeholders added to all inputs, UI improvements
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -304,14 +304,14 @@ export default function InvitePage() {
                   <Label>{t.auth.email}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
+                    <Input type="email" placeholder="jan@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required />
                   </div>
                 </div>
                 <div>
                   <Label>{t.auth.password}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+                    <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
                   </div>
                 </div>
                 <Button type="submit" className="w-full" disabled={submitting}>
@@ -357,14 +357,14 @@ export default function InvitePage() {
                     <Label>{t.auth.firstName}</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="pl-10" required />
+                      <Input placeholder="Jan" value={firstName} onChange={(e) => setFirstName(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                   <div>
                     <Label>{t.auth.lastName}</Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                      <Input value={lastName} onChange={(e) => setLastName(e.target.value)} className="pl-10" required />
+                      <Input placeholder="Kowalski" value={lastName} onChange={(e) => setLastName(e.target.value)} className="pl-10" required />
                     </div>
                   </div>
                 </div>
@@ -373,14 +373,14 @@ export default function InvitePage() {
                   <Label>{t.auth.email}</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required disabled={!!invitation?.invitedEmail} />
+                    <Input type="email" placeholder="jan@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required disabled={!!invitation?.invitedEmail} />
                   </div>
                 </div>
                 <div>
                   <Label>{t.auth.password}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
+                    <Input type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="pl-10" required />
                   </div>
                   <PasswordStrength password={password} />
                 </div>
@@ -388,7 +388,7 @@ export default function InvitePage() {
                   <Label>{t.auth.confirmPassword}</Label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10" required />
+                    <Input type="password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="pl-10" required />
                   </div>
                 </div>
 
@@ -397,7 +397,7 @@ export default function InvitePage() {
                   <Label htmlFor="terms" className="text-sm text-gray-600 leading-tight cursor-pointer">
                     {t.auth.termsAccept}{' '}
                     <Link href="/terms" className="text-blue-600 hover:underline" target="_blank">{t.auth.termsLink}</Link>{' '}
-                    {inv.orDivider === 'и' || inv.orDivider === 'und' ? inv.orDivider : t.auth.orDivider === 'lub' ? 'i' : '&'}{' '}
+                    &{' '}
                     <Link href="/privacy" className="text-blue-600 hover:underline" target="_blank">{t.auth.privacyLink}</Link>
                     {' '}<span className="text-red-500">*</span>
                   </Label>
