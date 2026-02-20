@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: V6 — Issues (Zgłoszenia) + Message Attachments
+// Обновлено: V7 — Email Notifications (UserSettings + NotificationLog)
 
 generator client {
   provider = "prisma-client-js"
@@ -12,7 +12,9 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ============== ПОЛЬЗОВАТЕЛИ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ПОЛЬЗОВАТЕЛИ                                                ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model User {
   id        String   @id @default(uuid())
@@ -23,7 +25,7 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Множественные роли
+  // Роли
   isOwner  Boolean @default(false)
   isTenant Boolean @default(false)
 
@@ -37,54 +39,55 @@ model User {
   privacyAcceptedAt DateTime?
   termsVersion      String?
 
-  // V4: Адрес владельца (для договоров — §1 Dane Wynajmującego)
+  // V4: Адрес владельца (для договоров)
   address    String?
   city       String?
   postalCode String?
 
-  // V4: PESEL / нац. ID владельца (для договоров)
+  // V4: Национальный ID владельца
   nationalId     String?
   nationalIdType String? @default("PESEL")
 
-  // Банковские реквизиты (для владельцев)
+  // Банковские реквизиты
   bankName      String?
   iban          String?
   accountHolder String?
 
-  // Stripe Connect (для онлайн-платежей)
+  // Stripe Connect
   stripeAccountId String?
   stripeOnboarded Boolean @default(false)
 
   subscriptionPlan     SubscriptionPlan @default(FREE)
   stripeCustomerId     String?          @unique
   stripeSubscriptionId String?
-
-
-  // Связи для OWNER
   properties Property[]
-  tenants    Tenant[]     @relation("OwnerTenants")
+  tenants    Tenant[]   @relation("OwnerTenants")
   payments   Payment[]
 
-  // Связь для TENANT (жилец привязан к Tenant записи)
+  // Relations — TENANT
   tenantProfile Tenant? @relation("TenantUser")
 
   // Сообщения
   sentMessages     Message[] @relation("SentMessages")
   receivedMessages Message[] @relation("ReceivedMessages")
 
-  // Заявки созданные (для жильцов) — legacy
-  tickets Ticket[]
-
-  // Объявления созданные (для владельцев)
+  // Прочее
+  tickets       Ticket[]
   announcements Announcement[]
 
   // V6: Zgłoszenia (Issues)
   issues Issue[]
 
+  // V7: Настройки уведомлений и лог
+  settings         UserSettings?
+  notificationLogs NotificationLog[]
+
   @@map("users")
 }
 
-// ============== ПРИГЛАШЕНИЯ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ПРИГЛАШЕНИЯ                                                 ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Invitation {
   id         String           @id @default(uuid())
@@ -95,14 +98,11 @@ model Invitation {
   expiresAt  DateTime
   usedAt     DateTime?
   usedBy     String?
+  tenantId   String?
   createdAt  DateTime         @default(now())
 
-  tenantId String?
-
-  // Связи
   property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
 
-  // Индексы
   @@index([code])
   @@index([expiresAt])
   @@index([propertyId, status])
@@ -116,6 +116,7 @@ enum InvitationStatus {
   REVOKED
 }
 
+<<<<<<< HEAD
 enum SubscriptionPlan {
   FREE
   PRO
@@ -123,6 +124,11 @@ enum SubscriptionPlan {
 }
 
 // ============== НЕДВИЖИМОСТЬ ==============
+=======
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  НЕДВИЖИМОСТЬ                                                ║
+// ╚══════════════════════════════════════════════════════════════╝
+>>>>>>> 48cbd2d1634e8e3f29843e87322a2b333bb75df4
 
 model Property {
   id          String         @id @default(uuid())
@@ -136,13 +142,12 @@ model Property {
   rooms       Int?
   floor       Int?
   description String?
-  photos      String[]   @default([])
+  photos      String[]       @default([])
   status      PropertyStatus @default(VACANT)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
-  // Связи
-  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenants          Tenant[]
   meters           Meter[]
   contracts        Contract[]
@@ -152,16 +157,15 @@ model Property {
   announcements    Announcement[]
   paymentTemplates PaymentTemplate[]
 
-  // V5: Utilities Module — новые связи
+  // V5: Utilities
   fixedUtilities FixedUtility[]
   utilityRates   UtilityRate[]
   settlements    UtilitySettlement[]
   ledgerEntries  TenantLedger[]
 
-  // V6: Issues (Zgłoszenia)
+  // V6: Issues
   issues Issue[]
 
-  // Индексы
   @@index([userId, status])
   @@map("properties")
 }
@@ -172,7 +176,9 @@ enum PropertyStatus {
   RESERVED
 }
 
-// ============== ЖИЛЬЦЫ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ЖИЛЬЦЫ                                                      ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Tenant {
   id           String  @id @default(uuid())
@@ -184,30 +190,25 @@ model Tenant {
   email        String?
   phone        String?
 
-  // Универсальный национальный ID
   nationalId     String?
   nationalIdType String?
 
   // @deprecated — используйте nationalId + nationalIdType
   pesel String?
 
-  // Региональные настройки
   regionCode String @default("PL")
 
-  // Экстренный контакт
   emergencyContact String?
   emergencyPhone   String?
 
   // Польские требования (Contracts V2)
-  citizenship         String? // Obywatelstwo
-  registrationAddress String? // Adres замeldowania
+  citizenship         String?
+  registrationAddress String?
 
-  // Даты аренды
   moveInDate  DateTime?
   moveOutDate DateTime?
   isActive    Boolean   @default(true)
 
-  // Лицензионное соглашение
   termsAcceptedAt         DateTime?
   termsVersion            String?
   registrationCompletedAt DateTime?
@@ -215,7 +216,6 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Связи
   user          User      @relation("OwnerTenants", fields: [userId], references: [id], onDelete: Cascade)
   tenantUser    User?     @relation("TenantUser", fields: [tenantUserId], references: [id], onDelete: SetNull)
   property      Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
@@ -223,11 +223,10 @@ model Tenant {
   contracts     Contract[]
   meterReadings MeterReading[]
 
-  // V5: Utilities Module — новые связи
+  // V5: Utilities
   settlementShares SettlementShare[]
   ledgerEntries    TenantLedger[]
 
-  // Индексы
   @@index([email])
   @@index([userId, isActive])
   @@index([tenantUserId])
@@ -235,7 +234,9 @@ model Tenant {
   @@map("tenants")
 }
 
-// ============== ДОГОВОРЫ (Contracts V4) ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ДОГОВОРЫ (Contracts V4)                                     ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Contract {
   id         String       @id @default(uuid())
@@ -245,12 +246,12 @@ model Contract {
   startDate  DateTime
   endDate    DateTime?
 
-  // Финансы: czynsz + opłaty + media
-  rentAmount       Float                          // Czynsz najmu
-  adminFee         Float          @default(0)     // Czynsz administracyjny
-  utilitiesAdvance Float          @default(0)     // Залiczка на media
+  // Финансы
+  rentAmount       Float
+  adminFee         Float  @default(0)
+  utilitiesAdvance Float  @default(0)
   depositAmount    Float?
-  paymentDay       Int            @default(10)    // 1-28
+  paymentDay       Int    @default(10)
 
   // Статус и подпись
   status         ContractStatus @default(DRAFT)
@@ -267,11 +268,10 @@ model Contract {
   statusUpdatedBy String?   @map("status_updated_by")
 
   // V4: Юридические поля
-  noticePeriod    Int?    @default(1)   // Okres wypowiedzenia (мес.)
-  additionalTerms String?               // Szczególne postanowienia
+  noticePeriod    Int?    @default(1)
+  additionalTerms String?
 
-  // Источник: форма или загруженный PDF
-  contractSource  String @default("FORM")
+  contractSource  String  @default("FORM")
   contractFileUrl String?
 
   // Najem okazjonalny — lokal zastępczy
@@ -279,7 +279,6 @@ model Contract {
   substituteCity       String?
   substitutePostalCode String?
 
-  // Масштабирование
   currency String @default("PLN")
   country  String @default("PL")
   locale   String @default("pl-PL")
@@ -288,13 +287,11 @@ model Contract {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Связи
   property      Property               @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   attachments   ContractAttachment[]
   statusHistory ContractStatusHistory[]
 
-  // Индексы
   @@index([status, endDate])
   @@index([propertyId, status])
   @@index([tenantId])
@@ -353,7 +350,9 @@ enum ContractStatus {
   TERMINATED
 }
 
-// ============== ПЛАТЕЖИ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ПЛАТЕЖИ                                                     ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Payment {
   id          String        @id @default(uuid())
@@ -419,23 +418,25 @@ model PaymentTemplate {
   @@map("payment_templates")
 }
 
-// ============== СООБЩЕНИЯ (V6: + Attachments + Issue Reference) ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  СООБЩЕНИЯ (V6: Attachments + Issue Reference)               ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Message {
   id         String    @id @default(uuid())
   senderId   String
   receiverId String
   propertyId String
-  content    String?   // V6: теперь nullable — поддержка image-only сообщений
+  content    String?
   isRead     Boolean   @default(false)
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
-  // V6: Поддержка вложений (фото в чате)
-  attachmentPath     String? // Относительный путь в Supabase Storage bucket "attachments"
-  attachmentMetadata Json?   // { width, height, size, mime_type }
+  // V6: Вложения (фото в чате)
+  attachmentPath     String?
+  attachmentMetadata Json?
 
-  // V6: Ссылка на zgłoszenie (если сообщение касается usterki)
+  // V6: Ссылка на zgłoszenie
   issueId String?
 
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
@@ -449,7 +450,9 @@ model Message {
   @@map("messages")
 }
 
-// ============== ЗАЯВКИ (legacy — Tickets) ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ЗАЯВКИ — legacy (Tickets)                                   ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Ticket {
   id          String       @id @default(uuid())
@@ -488,7 +491,9 @@ model TicketComment {
   @@map("ticket_comments")
 }
 
-// ============== ОБЪЯВЛЕНИЯ ==============
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  ОБЪЯВЛЕНИЯ                                                  ║
+// ╚══════════════════════════════════════════════════════════════╝
 
 model Announcement {
   id          String    @id @default(uuid())
@@ -508,23 +513,20 @@ model Announcement {
 }
 
 // ╔══════════════════════════════════════════════════════════════╗
-// ║                                                              ║
-// ║          V6: ISSUES (ZGŁOSZENIA) + ATTACHMENTS               ║
-// ║          Maintenance reporting system                        ║
-// ║                                                              ║
+// ║  V6: ISSUES (ZGŁOSZENIA) + ATTACHMENTS                       ║
 // ╚══════════════════════════════════════════════════════════════╝
 
 model Issue {
   id          String        @id @default(uuid())
   propertyId  String
-  createdById String        // User who created (tenant)
+  createdById String
   title       String
   description String
   category    IssueCategory @default(OTHER)
   status      IssueStatus   @default(OPEN)
   priority    IssuePriority @default(MEDIUM)
-  isPrivate   Boolean       @default(false) // Переключатель приватности для multi-tenant квартир
-  isDeleted   Boolean       @default(false) // Soft delete
+  isPrivate   Boolean       @default(false)
+  isDeleted   Boolean       @default(false)
 
   resolvedAt DateTime?
   closedAt   DateTime?
@@ -533,11 +535,10 @@ model Issue {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Связи
   property    Property          @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   createdBy   User              @relation(fields: [createdById], references: [id], onDelete: Cascade)
   attachments IssueAttachment[]
-  messages    Message[]         // Сообщения в чате, ссылающиеся на это zgłoszenie
+  messages    Message[]
 
   @@index([propertyId, status])
   @@index([createdById])
@@ -548,11 +549,11 @@ model Issue {
 model IssueAttachment {
   id        String   @id @default(uuid())
   issueId   String
-  filePath  String   // Относительный путь в Supabase Storage bucket "attachments"
+  filePath  String
   fileName  String
   fileSize  Int?
   mimeType  String?
-  metadata  Json?    // { width, height }
+  metadata  Json?
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
 
@@ -570,14 +571,14 @@ enum IssueStatus {
 }
 
 enum IssueCategory {
-  PLUMBING      // Hydraulika
-  ELECTRICAL    // Elektryka
-  HEATING       // Ogrzewanie
-  APPLIANCE     // Sprzęt AGD
-  STRUCTURAL    // Konstrukcja
-  PEST_CONTROL  // Dezynsekcja
-  CLEANING      // Czystość
-  OTHER         // Inne
+  PLUMBING
+  ELECTRICAL
+  HEATING
+  APPLIANCE
+  STRUCTURAL
+  PEST_CONTROL
+  CLEANING
+  OTHER
 }
 
 enum IssuePriority {
@@ -588,30 +589,24 @@ enum IssuePriority {
 }
 
 // ╔══════════════════════════════════════════════════════════════╗
-// ║                                                              ║
-// ║          V5: METERS & UTILITIES MODULE                       ║
-// ║          (Rozliczenie mediów)                                ║
-// ║                                                              ║
+// ║  V5: METERS & UTILITIES MODULE                               ║
 // ╚══════════════════════════════════════════════════════════════╝
-
-// ============== СЧЁТЧИКИ (V5: Enhanced) ==============
 
 model Meter {
   id           String      @id @default(uuid())
   propertyId   String
   type         MeterType
   meterNumber  String?
-  serialNumber String?                          // V5: Серийный номер
+  serialNumber String?
   unit         String
   pricePerUnit Float?
 
-  // V5: Lifecycle
   status      MeterStatus @default(ACTIVE)
   installDate DateTime?
   archiveDate DateTime?
   archiveNote String?
 
-  // V5: Meter exchange chain (self-relation)
+  // Meter exchange chain
   replacedById String? @unique
   replacedBy   Meter?  @relation("MeterReplacement", fields: [replacedById], references: [id])
   replaces     Meter?  @relation("MeterReplacement")
@@ -621,7 +616,7 @@ model Meter {
 
   property        Property         @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   readings        MeterReading[]
-  settlementItems SettlementItem[] // V5
+  settlementItems SettlementItem[]
 
   @@index([propertyId, status])
   @@index([propertyId, type])
@@ -648,9 +643,9 @@ model MeterReading {
   tenantId    String?
   value       Float
   readingDate DateTime
-  readingType MeterReadingType @default(REGULAR) // V5
+  readingType MeterReadingType @default(REGULAR)
   photoUrl    String?
-  notes       String?                            // V5
+  notes       String?
   createdAt   DateTime         @default(now())
 
   meter  Meter   @relation(fields: [meterId], references: [id], onDelete: Cascade)
@@ -667,8 +662,6 @@ enum MeterReadingType {
   FINAL
   METER_EXCHANGE
 }
-
-// ============== V5: ФИКСИРОВАННЫЕ УСЛУГИ ==============
 
 model FixedUtility {
   id          String           @id @default(uuid())
@@ -701,8 +694,6 @@ enum FixedUtilityType {
   OTHER
 }
 
-// ============== V5: ТАРИФЫ (история ставок) ==============
-
 model UtilityRate {
   id            String    @id @default(uuid())
   propertyId    String
@@ -719,8 +710,6 @@ model UtilityRate {
   @@index([propertyId, meterType, effectiveFrom(sort: Desc)])
   @@map("utility_rates")
 }
-
-// ============== V5: РОЗЛІЧЕННЯ (Settlements) ==============
 
 model UtilitySettlement {
   id             String           @id @default(uuid())
@@ -766,8 +755,6 @@ enum BillingApproach {
   ADVANCE_PAYMENT
 }
 
-// ============== V5: ПОЗИЦИИ РОЗЛІЧЕННЯ ==============
-
 model SettlementItem {
   id             String          @id @default(uuid())
   settlementId   String
@@ -778,7 +765,7 @@ model SettlementItem {
   prevReading    Float?
   currReading    Float?
   consumption    Float?
-  snapshotRate   Float?          // Зафиксированная ставка на момент расчёта
+  snapshotRate   Float?
   periodCost     Float?
   totalCost      Float
   splitMethod    CostSplitMethod @default(BY_DAYS)
@@ -799,8 +786,6 @@ enum CostSplitMethod {
   MANUAL
 }
 
-// ============== V5: ДОЛЯ ЖИЛЬЦА ==============
-
 model SettlementShare {
   id               String    @id @default(uuid())
   settlementId     String
@@ -816,8 +801,8 @@ model SettlementShare {
   isPaid           Boolean   @default(false)
   paidAt           DateTime?
   paymentId        String?
-  notes            String?   // Видна жильцу
-  ownerNotes       String?   // Скрыта от жильца
+  notes            String?
+  ownerNotes       String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -830,18 +815,16 @@ model SettlementShare {
   @@map("settlement_shares")
 }
 
-// ============== V5: КНИГА САЛЬДО ==============
-
 model TenantLedger {
   id           String          @id @default(uuid())
   tenantId     String
   propertyId   String
   entryType    LedgerEntryType
-  amount       Float           // positive = долг, negative = кредит
+  amount       Float
   settlementId String?
   paymentId    String?
   description  String
-  balanceAfter Float           // running total
+  balanceAfter Float
   createdAt    DateTime        @default(now())
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -858,4 +841,68 @@ enum LedgerEntryType {
   PAYMENT
   ADJUSTMENT
   CARRY_FORWARD
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  V7: EMAIL NOTIFICATIONS                                     ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+model UserSettings {
+  id     String @id @default(uuid())
+  userId String @unique
+
+  // Email-уведомления (соответствуют UI Settings > Notifications)
+  emailPaymentReminders Boolean @default(true)
+  emailContractExpiry   Boolean @default(true)
+  emailNewTenant        Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
+}
+
+model NotificationLog {
+  id     String @id @default(uuid())
+  userId String
+
+  type      NotificationType
+  status    NotificationStatus @default(PENDING)
+  recipient String
+  subject   String
+  body      String             @db.Text
+
+  // Контекст
+  relatedId   String?
+  relatedType String?
+
+  // Результат
+  sentAt     DateTime?
+  errorMsg   String?
+  externalId String?
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([type, status])
+  @@index([relatedId, relatedType])
+  @@map("notification_logs")
+}
+
+enum NotificationType {
+  PAYMENT_DUE_SOON
+  PAYMENT_OVERDUE
+  CONTRACT_EXPIRY_SOON
+  CONTRACT_EXPIRED
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
 }
