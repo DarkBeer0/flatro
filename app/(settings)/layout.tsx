@@ -88,7 +88,6 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
     { href: '/tenant/contracts', icon: FileText, label: 'Umowy' },
     { href: '/tenant/payments', icon: CreditCard, label: 'Мои платежи' },
     { href: '/tenant/messages', icon: MessageSquare, label: 'Сообщения' },
-    { href: '/tenant/tickets', icon: AlertTriangle, label: 'Заявки' },
     { href: '/tenant/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
   ]
 

@@ -9,7 +9,6 @@ import { Card } from '@/components/ui/card'
 import { Building2, Users, CreditCard, AlertTriangle, TrendingUp, Home, Loader2, CheckCircle } from 'lucide-react'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
-import { translateInviteError } from '@/lib/i18n/invite-errors'
 
 interface DashboardStats {
   properties: { total: number; occupied: number; vacant: number }
