@@ -14,7 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { InviteTenant } from '@/components/invite-tenant'
+import { TenantSection } from '@/components/tenant-section'
 import { useLocale } from '@/lib/i18n/context'
 
 // ============================================
@@ -318,60 +318,14 @@ export default function PropertyDetailPage() {
 
       {/* Two-column grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* ─── Tenants ──────────────────────────── */}
-        <Card className="p-4 lg:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-semibold flex items-center gap-2">
-              <Users className="h-5 w-5 text-green-600" />
-              {t.tenants.title}
-            </h3>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                document.getElementById('invite-section')?.scrollIntoView({ behavior: 'smooth' })
-              }}
-            >
-              + Пригласить
-            </Button>
-          </div>
-
-          {activeTenants.length > 0 ? (
-            <div className="space-y-3">
-              {activeTenants.map((tenant) => (
-                <div key={tenant.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                      <span className="text-green-600 font-medium">
-                        {tenant.firstName[0]}{tenant.lastName[0]}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-medium">{tenant.firstName} {tenant.lastName}</p>
-                      {tenant.email && <p className="text-sm text-gray-500">{tenant.email}</p>}
-                    </div>
-                  </div>
-                  <Link href={`/tenants/${tenant.id}`}>
-                    <Button size="sm" variant="ghost">{t.common.details}</Button>
-                  </Link>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">{t.properties.noTenant}</p>
-          )}
-        </Card>
-
-        {/* ─── Invite Tenant ────────────────────── */}
-        <div id="invite-section">
-        <InviteTenant
+        {/* ─── TenantSection ──────────────────────────── */}
+        <TenantSection
           propertyId={property.id}
           propertyName={property.name}
+          tenants={property.tenants}
           invitations={invitations}
-          onInvitationCreated={fetchData}
+          onDataChanged={fetchData}
         />
-      </div>
-
         {/* ─── Contracts (SCROLLABLE) ───────────── */}
         <Card className="p-4 lg:p-6">
           <div className="flex items-center justify-between mb-4">
