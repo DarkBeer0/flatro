@@ -164,7 +164,7 @@ function RegisterForm() {
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
 
   // FIX 4: OTP state
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', ''])
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '', '', ''])
   const [resendCooldown, setResendCooldown] = useState(0)
   const [resending, setResending] = useState(false)
   const [verifying, setVerifying] = useState(false)
@@ -331,13 +331,13 @@ function RegisterForm() {
     newDigits[index] = digit
     setOtpDigits(newDigits)
 
-    if (digit && index < 5) {
+    if (digit && index < 7) {
       inputRefs.current[index + 1]?.focus()
     }
 
-    if (digit && index === 5) {
+    if (digit && index === 7) {
       const fullCode = newDigits.join('')
-      if (fullCode.length === 6) {
+      if (fullCode.length === 8) {
         handleVerifyOtp(fullCode)
       }
     }
@@ -351,19 +351,19 @@ function RegisterForm() {
 
   function handleOtpPaste(e: React.ClipboardEvent) {
     e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8)
     if (pasted.length > 0) {
       const newDigits = [...otpDigits]
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 8; i++) {
         newDigits[i] = pasted[i] || ''
       }
       setOtpDigits(newDigits)
 
       const nextEmpty = newDigits.findIndex(d => !d)
-      const focusIdx = nextEmpty === -1 ? 5 : nextEmpty
+      const focusIdx = nextEmpty === -1 ? 7 : nextEmpty
       inputRefs.current[focusIdx]?.focus()
 
-      if (pasted.length === 6) {
+      if (pasted.length === 8) {
         handleVerifyOtp(pasted)
       }
     }
@@ -371,8 +371,8 @@ function RegisterForm() {
 
   async function handleVerifyOtp(otpCode?: string) {
     const token = otpCode || otpDigits.join('')
-    if (token.length !== 6) {
-      setError('Введите все 6 цифр кода')
+    if (token.length !== 8) {
+      setError('Введите все 8 цифр кода')
       return
     }
 
@@ -389,7 +389,7 @@ function RegisterForm() {
 
       if (verifyError) {
         setError('Неверный или просроченный код. Попробуйте ещё раз.')
-        setOtpDigits(['', '', '', '', '', ''])
+        setOtpDigits(['', '', '', '', '', '', '', ''])
         inputRefs.current[0]?.focus()
         setVerifying(false)
         return
@@ -430,7 +430,7 @@ function RegisterForm() {
         setError(resendError.message)
       } else {
         setResendCooldown(RESEND_COOLDOWN_SECONDS)
-        setOtpDigits(['', '', '', '', '', ''])
+        setOtpDigits(['', '', '', '', '', '', '', ''])
         inputRefs.current[0]?.focus()
       }
     } catch {
@@ -482,7 +482,7 @@ function RegisterForm() {
                 Введите код подтверждения
               </h2>
               <p className="text-gray-600 text-sm">
-                Мы отправили 6-значный код на{' '}
+                Мы отправили 8-значный код на{' '}
                 <span className="font-medium text-gray-900">{email}</span>
               </p>
             </div>
@@ -495,7 +495,7 @@ function RegisterForm() {
             )}
 
             {/* OTP Input */}
-            <div className="flex justify-center gap-2 mb-6" onPaste={handleOtpPaste}>
+            <div className="flex justify-center gap-1.5 mb-6" onPaste={handleOtpPaste}>
               {otpDigits.map((digit, index) => (
                 <input
                   key={index}
@@ -507,7 +507,7 @@ function RegisterForm() {
                   value={digit}
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                  className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  className="w-10 h-12 text-center text-xl font-semibold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
                   disabled={verifying}
                 />
               ))}
@@ -516,7 +516,7 @@ function RegisterForm() {
             <Button
               onClick={() => handleVerifyOtp()}
               className="w-full mb-4"
-              disabled={verifying || otpDigits.join('').length !== 6}
+              disabled={verifying || otpDigits.join('').length !== 8}
             >
               {verifying ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

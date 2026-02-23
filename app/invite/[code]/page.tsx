@@ -1,11 +1,17 @@
 // app/invite/[code]/page.tsx
-// FIXED: OTP verification instead of magic link to avoid PKCE cross-browser issues
+// Tenant invitation page
+// FIX: Session detection — if already logged in, offer to accept directly
+// FIX: OTP verification instead of magic link for cross-device support
+
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle, Home, MapPin, RefreshCw } from 'lucide-react'
+import {
+  Building2, MapPin, Mail, Lock, User, Loader2, AlertCircle,
+  CheckCircle, LogOut, RefreshCw
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -18,16 +24,15 @@ import { useLocale } from '@/lib/i18n/context'
 const RESEND_COOLDOWN_SECONDS = 60
 
 interface InvitationData {
-  valid: boolean
-  propertyId: string
   propertyName: string
   propertyAddress: string
   ownerName: string
-  ownerEmail?: string
   expiresAt: string
   suggestedRegion?: string
   invitedEmail: string | null
 }
+
+type Step = 'loading' | 'logged-in' | 'register' | 'login' | 'verify' | 'error'
 
 export default function InvitePage() {
   const router = useRouter()
@@ -38,8 +43,12 @@ export default function InvitePage() {
   const [invitation, setInvitation] = useState<InvitationData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [step, setStep] = useState<'loading' | 'register' | 'login' | 'verify' | 'error'>('loading')
+  const [step, setStep] = useState<Step>('loading')
 
+  // Auth state
+  const [currentUser, setCurrentUser] = useState<{ email: string; name?: string } | null>(null)
+
+  // Register form
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [email, setEmail] = useState('')
@@ -48,14 +57,78 @@ export default function InvitePage() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  // OTP verification state
-  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', ''])
+  // OTP state
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '', '', ''])
   const [resendCooldown, setResendCooldown] = useState(0)
   const [resending, setResending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Helper: access invite dictionary safely
   const inv = (t as any).invite || {}
+
+  // ── Load invitation + check auth ──
+  useEffect(() => {
+    async function init() {
+      // 1. Check if user is already logged in
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+
+      if (user) {
+        setCurrentUser({
+          email: user.email || '',
+          name: user.user_metadata?.name ||
+                (user.user_metadata?.first_name && user.user_metadata?.last_name
+                  ? `${user.user_metadata.first_name} ${user.user_metadata.last_name}`
+                  : undefined),
+        })
+      }
+
+      // 2. Fetch invitation data
+      try {
+        const res = await fetch(`/api/invitations/${code}`)
+        const data = await res.json()
+
+        if (!res.ok) {
+          if (data.code === 'NOT_FOUND' || res.status === 404) {
+            setError(inv.notFound || 'Invitation not found')
+          } else if (data.code === 'EXPIRED') {
+            setError(inv.expired || 'Invitation expired')
+          } else if (data.code === 'ALREADY_USED') {
+            setError(inv.alreadyUsed || 'Invitation already used')
+          } else {
+            setError(data.error || inv.loadError || 'Failed to load invitation')
+          }
+          setStep('error')
+          return
+        }
+
+        if (!data.propertyName || !data.propertyAddress) {
+          setError(inv.invalidInvitationData || 'Invalid invitation data')
+          setStep('error')
+          return
+        }
+
+        setInvitation(data)
+        if (data.invitedEmail) setEmail(data.invitedEmail)
+        localStorage.setItem('pendingInviteCode', code)
+
+        // 3. Decide initial step
+        if (user) {
+          setStep('logged-in')
+        } else {
+          setStep('register')
+        }
+      } catch (err) {
+        console.error('Error fetching invitation:', err)
+        setError(inv.connectionError || 'Connection error')
+        setStep('error')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    init()
+  }, [code])
 
   // Resend cooldown timer
   useEffect(() => {
@@ -65,55 +138,45 @@ export default function InvitePage() {
     }
   }, [resendCooldown])
 
-  useEffect(() => {
-    fetchInvitation()
-  }, [code])
-
-  // Auto-focus first OTP input when entering verify step
+  // Auto-focus first OTP input
   useEffect(() => {
     if (step === 'verify') {
       setTimeout(() => inputRefs.current[0]?.focus(), 100)
     }
   }, [step])
 
-  async function fetchInvitation() {
+  // ── Accept invitation (logged-in user) ──
+  async function handleAcceptAsCurrentUser() {
+    setSubmitting(true)
+    setError(null)
+
     try {
-      const res = await fetch(`/api/invitations/${code}`)
-      const data = await res.json()
-
+      const res = await fetch(`/api/invitations/${code}`, { method: 'POST' })
       if (!res.ok) {
-        if (data.code === 'NOT_FOUND' || res.status === 404) {
-          setError(inv.notFound || 'Invitation not found')
-        } else if (data.code === 'EXPIRED') {
-          setError(inv.expired || 'Invitation expired')
-        } else if (data.code === 'ALREADY_USED') {
-          setError(inv.alreadyUsed || 'Invitation already used')
-        } else {
-          setError(data.error || inv.loadError || 'Failed to load invitation')
-        }
-        setStep('error')
+        const data = await res.json()
+        setError(data.error || inv.activationError || 'Activation failed')
+        setSubmitting(false)
         return
       }
-
-      if (!data.propertyName || !data.propertyAddress) {
-        setError(inv.invalidInvitationData || 'Invalid invitation data')
-        setStep('error')
-        return
-      }
-
-      setInvitation(data)
-      if (data.invitedEmail) setEmail(data.invitedEmail)
-      localStorage.setItem('pendingInviteCode', code)
-      setStep('register')
-    } catch (err) {
-      console.error('Error fetching invitation:', err)
-      setError(inv.connectionError || 'Connection error')
-      setStep('error')
-    } finally {
-      setLoading(false)
+      localStorage.removeItem('pendingInviteCode')
+      router.push('/tenant/dashboard')
+      router.refresh()
+    } catch {
+      setError(inv.activationError || 'Activation failed')
+      setSubmitting(false)
     }
   }
 
+  // ── Log out and switch to register ──
+  async function handleLogoutAndRegister() {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    setCurrentUser(null)
+    setError(null)
+    setStep('register')
+  }
+
+  // ── Register ──
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -173,138 +236,21 @@ export default function InvitePage() {
       return
     }
 
-    // If auto-confirmed (rare: when email confirmation is disabled)
+    // If auto-confirmed (session returned immediately)
     if (authData.session) {
       await activateInvitation()
       return
     }
 
-    // Go to OTP verification step instead of just showing "check email"
-    setResendCooldown(RESEND_COOLDOWN_SECONDS)
-    setStep('verify')
+    // Go to OTP verification
+    if (authData?.user) {
+      setResendCooldown(RESEND_COOLDOWN_SECONDS)
+      setStep('verify')
+    }
     setSubmitting(false)
   }
 
-  // ── OTP input handlers ──
-  function handleOtpChange(index: number, value: string) {
-    // Only allow digits
-    const digit = value.replace(/\D/g, '').slice(-1)
-    const newDigits = [...otpDigits]
-    newDigits[index] = digit
-    setOtpDigits(newDigits)
-
-    // Auto-advance to next input
-    if (digit && index < 5) {
-      inputRefs.current[index + 1]?.focus()
-    }
-
-    // Auto-submit when all 6 digits entered
-    if (digit && index === 5) {
-      const fullCode = newDigits.join('')
-      if (fullCode.length === 6) {
-        handleVerifyOtp(fullCode)
-      }
-    }
-  }
-
-  function handleOtpKeyDown(index: number, e: React.KeyboardEvent) {
-    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus()
-    }
-  }
-
-  function handleOtpPaste(e: React.ClipboardEvent) {
-    e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pasted.length > 0) {
-      const newDigits = [...otpDigits]
-      for (let i = 0; i < 6; i++) {
-        newDigits[i] = pasted[i] || ''
-      }
-      setOtpDigits(newDigits)
-
-      // Focus the next empty input or the last one
-      const nextEmpty = newDigits.findIndex(d => !d)
-      const focusIdx = nextEmpty === -1 ? 5 : nextEmpty
-      inputRefs.current[focusIdx]?.focus()
-
-      // Auto-submit if all digits filled
-      if (pasted.length === 6) {
-        handleVerifyOtp(pasted)
-      }
-    }
-  }
-
-  async function handleVerifyOtp(otpCode?: string) {
-    const token = otpCode || otpDigits.join('')
-    if (token.length !== 6) {
-      setError(inv.otpIncomplete || 'Please enter all 6 digits')
-      return
-    }
-
-    setSubmitting(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
-        email,
-        token,
-        type: 'signup',
-      })
-
-      if (verifyError) {
-        setError(inv.otpInvalid || 'Invalid or expired code. Please try again.')
-        setOtpDigits(['', '', '', '', '', ''])
-        inputRefs.current[0]?.focus()
-        setSubmitting(false)
-        return
-      }
-
-      if (data.session) {
-        // Successfully verified — activate invitation
-        await activateInvitation()
-      } else {
-        setError(inv.otpNoSession || 'Verification succeeded but no session created. Please try logging in.')
-        setSubmitting(false)
-      }
-    } catch (err) {
-      console.error('OTP verification error:', err)
-      setError(inv.genericError || 'An error occurred. Please try again.')
-      setSubmitting(false)
-    }
-  }
-
-  async function handleResendOtp() {
-    if (resendCooldown > 0 || resending) return
-
-    setResending(true)
-    setError(null)
-
-    try {
-      const supabase = createClient()
-      const { error: resendError } = await supabase.auth.resend({
-        type: 'signup',
-        email,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?invite=${code}`,
-        },
-      })
-
-      if (resendError) {
-        setError(resendError.message)
-      } else {
-        setResendCooldown(RESEND_COOLDOWN_SECONDS)
-        setOtpDigits(['', '', '', '', '', ''])
-        inputRefs.current[0]?.focus()
-      }
-    } catch {
-      setError(inv.genericError || 'Failed to resend code')
-    } finally {
-      setResending(false)
-    }
-  }
-
+  // ── Login ──
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setSubmitting(true)
@@ -322,11 +268,12 @@ export default function InvitePage() {
     await activateInvitation()
   }
 
+  // ── Google Auth ──
   async function handleGoogleAuth() {
     setSubmitting(true)
     setError(null)
 
-    if (!termsAccepted) {
+    if (!termsAccepted && step === 'register') {
       setError(inv.termsRequired || 'You must accept the terms')
       setSubmitting(false)
       return
@@ -347,6 +294,7 @@ export default function InvitePage() {
     }
   }
 
+  // ── Activate invitation (shared) ──
   async function activateInvitation() {
     try {
       const res = await fetch(`/api/invitations/${code}`, { method: 'POST' })
@@ -365,13 +313,146 @@ export default function InvitePage() {
     }
   }
 
+  // ── OTP handlers ──
+  function handleOtpChange(index: number, value: string) {
+    const digit = value.replace(/\D/g, '').slice(-1)
+    const newDigits = [...otpDigits]
+    newDigits[index] = digit
+    setOtpDigits(newDigits)
+
+    if (digit && index < 7) {
+      inputRefs.current[index + 1]?.focus()
+    }
+
+    if (digit && index === 7) {
+      const fullCode = newDigits.join('')
+      if (fullCode.length === 8) {
+        handleVerifyOtp(fullCode)
+      }
+    }
+  }
+
+  function handleOtpKeyDown(index: number, e: React.KeyboardEvent) {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus()
+    }
+  }
+
+  function handleOtpPaste(e: React.ClipboardEvent) {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 8)
+    if (pasted.length > 0) {
+      const newDigits = [...otpDigits]
+      for (let i = 0; i < 8; i++) {
+        newDigits[i] = pasted[i] || ''
+      }
+      setOtpDigits(newDigits)
+      const nextEmpty = newDigits.findIndex(d => !d)
+      inputRefs.current[nextEmpty === -1 ? 7 : nextEmpty]?.focus()
+
+      if (pasted.length === 8) {
+        handleVerifyOtp(pasted)
+      }
+    }
+  }
+
+  async function handleVerifyOtp(otpCode?: string) {
+    const token = otpCode || otpDigits.join('')
+    if (token.length !== 8) {
+      setError(inv.otpIncomplete || 'Enter all 8 digits')
+      return
+    }
+
+    setVerifying(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'signup',
+      })
+
+      if (verifyError) {
+        setError(inv.otpInvalid || 'Invalid or expired code. Try again.')
+        setOtpDigits(['', '', '', '', '', '', '', ''])
+        inputRefs.current[0]?.focus()
+        setVerifying(false)
+        return
+      }
+
+      if (data.session) {
+        await activateInvitation()
+      } else {
+        setError(inv.otpNoSession || 'Verification passed but no session. Try logging in.')
+        setVerifying(false)
+      }
+    } catch {
+      setError('Error verifying code')
+      setVerifying(false)
+    }
+  }
+
+  async function handleResendOtp() {
+    if (resendCooldown > 0 || resending) return
+    setResending(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?invite=${code}`,
+        },
+      })
+      if (resendError) {
+        setError(resendError.message)
+      } else {
+        setResendCooldown(RESEND_COOLDOWN_SECONDS)
+        setOtpDigits(['', '', '', '', '', '', '', ''])
+        inputRefs.current[0]?.focus()
+      }
+    } catch {
+      setError('Failed to resend code')
+    } finally {
+      setResending(false)
+    }
+  }
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
-    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}s`
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}с`
   }
 
-  // ── Loading state ──
+  // ════════════════════════════════════════════
+  // RENDER: Invitation info card (shared)
+  // ════════════════════════════════════════════
+  const InvitationCard = () => (
+    invitation ? (
+      <Card className="p-4 bg-blue-50 border-blue-200">
+        <div className="flex items-start gap-3">
+          <Building2 className="h-8 w-8 text-blue-600 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-semibold text-blue-900">{inv.invitedTo || 'You have been invited to'}</p>
+            <p className="text-blue-800 font-medium text-base">{invitation.propertyName}</p>
+            <div className="flex items-center gap-1 text-blue-700 mt-1">
+              <MapPin className="h-3 w-3" />
+              <span>{invitation.propertyAddress}</span>
+            </div>
+            <p className="text-blue-600 mt-1">{inv.owner || 'Owner'}: {invitation.ownerName}</p>
+          </div>
+        </div>
+      </Card>
+    ) : null
+  )
+
+  // ════════════════════════════════════════════
+  // RENDER: Loading
+  // ════════════════════════════════════════════
   if (step === 'loading') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -383,7 +464,9 @@ export default function InvitePage() {
     )
   }
 
-  // ── Error state ──
+  // ════════════════════════════════════════════
+  // RENDER: Error
+  // ════════════════════════════════════════════
   if (step === 'error') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
@@ -401,27 +484,93 @@ export default function InvitePage() {
     )
   }
 
-  // ── OTP Verification state ──
+  // ════════════════════════════════════════════
+  // RENDER: Already logged in
+  // ════════════════════════════════════════════
+  if (step === 'logged-in') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md space-y-4">
+          <InvitationCard />
+
+          <Card className="p-6">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                Вы уже авторизованы
+              </h2>
+              <p className="text-gray-600 text-sm">
+                Вы вошли как <span className="font-medium text-gray-900">{currentUser?.email}</span>
+                {currentUser?.name && (
+                  <span className="block text-gray-500 mt-1">{currentUser.name}</span>
+                )}
+              </p>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2 mb-4">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {/* Accept invitation */}
+              <Button
+                onClick={handleAcceptAsCurrentUser}
+                className="w-full"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Принять приглашение
+                  </>
+                )}
+              </Button>
+
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-2 text-gray-400">или</span>
+                </div>
+              </div>
+
+              {/* Log out and register new account */}
+              <Button
+                onClick={handleLogoutAndRegister}
+                variant="outline"
+                className="w-full"
+                disabled={submitting}
+              >
+                <LogOut className="h-4 w-4 mr-2" />
+                Выйти и создать новый аккаунт
+              </Button>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-4">
+              Принимая приглашение, вы получите доступ к квартире как жилец
+            </p>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════
+  // RENDER: OTP Verification
+  // ════════════════════════════════════════════
   if (step === 'verify') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <div className="w-full max-w-md space-y-4">
-          {/* Invitation info card */}
-          {invitation && (
-            <Card className="p-4 bg-blue-50 border-blue-200">
-              <div className="flex items-start gap-3">
-                <Building2 className="h-8 w-8 text-blue-600 flex-shrink-0" />
-                <div className="text-sm">
-                  <p className="font-semibold text-blue-900">{inv.invitedTo || 'You have been invited to'}</p>
-                  <p className="text-blue-800 font-medium text-base">{invitation.propertyName}</p>
-                  <div className="flex items-center gap-1 text-blue-700 mt-1">
-                    <MapPin className="h-3 w-3" />
-                    <span>{invitation.propertyAddress}</span>
-                  </div>
-                </div>
-              </div>
-            </Card>
-          )}
+          <InvitationCard />
 
           <Card className="p-6">
             <div className="text-center mb-6">
@@ -432,7 +581,7 @@ export default function InvitePage() {
                 {inv.enterCode || 'Enter verification code'}
               </h2>
               <p className="text-gray-600 text-sm">
-                {(inv.otpSentTo || 'We sent a 6-digit code to {email}').replace('{email}', '')}
+                {(inv.otpSentTo || 'We sent an 8-digit code to {email}').replace('{email}', '')}
                 <span className="font-medium text-gray-900">{email}</span>
               </p>
             </div>
@@ -445,7 +594,7 @@ export default function InvitePage() {
             )}
 
             {/* OTP Input */}
-            <div className="flex justify-center gap-2 mb-6" onPaste={handleOtpPaste}>
+            <div className="flex justify-center gap-1.5 mb-6" onPaste={handleOtpPaste}>
               {otpDigits.map((digit, index) => (
                 <input
                   key={index}
@@ -457,8 +606,8 @@ export default function InvitePage() {
                   value={digit}
                   onChange={(e) => handleOtpChange(index, e.target.value)}
                   onKeyDown={(e) => handleOtpKeyDown(index, e)}
-                  className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
-                  disabled={submitting}
+                  className="w-10 h-12 text-center text-xl font-semibold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  disabled={verifying}
                 />
               ))}
             </div>
@@ -466,47 +615,32 @@ export default function InvitePage() {
             <Button
               onClick={() => handleVerifyOtp()}
               className="w-full mb-4"
-              disabled={submitting || otpDigits.join('').length !== 6}
+              disabled={verifying || otpDigits.join('').length !== 8}
             >
-              {submitting ? (
+              {verifying ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                inv.verifyAndContinue || 'Verify & continue'
+                inv.verifyAndContinue || 'Verify and continue'
               )}
             </Button>
 
             {/* Resend */}
             <div className="text-center">
-              <p className="text-sm text-gray-500 mb-2">
-                {inv.didntReceiveCode || "Didn't receive the code?"}
-              </p>
+              <p className="text-sm text-gray-500 mb-2">{inv.didntReceiveCode || "Didn't receive the code?"}</p>
               <button
                 onClick={handleResendOtp}
                 disabled={resendCooldown > 0 || resending}
                 className="text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline flex items-center gap-1 mx-auto"
               >
                 {resending ? (
-                  <>
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {inv.sending || 'Sending...'}
-                  </>
+                  <><Loader2 className="h-3 w-3 animate-spin" /> {inv.sending || 'Sending...'}</>
                 ) : resendCooldown > 0 ? (
-                  <>
-                    <RefreshCw className="h-3 w-3" />
-                    {(inv.resendIn || 'Resend in {time}').replace('{time}', formatTime(resendCooldown))}
-                  </>
+                  <><RefreshCw className="h-3 w-3" /> {(inv.resendIn || 'Resend in {time}').replace('{time}', formatTime(resendCooldown))}</>
                 ) : (
-                  <>
-                    <RefreshCw className="h-3 w-3" />
-                    {inv.resendCode || 'Resend code'}
-                  </>
+                  <><RefreshCw className="h-3 w-3" /> {inv.resendCode || 'Resend code'}</>
                 )}
               </button>
-
-              {/* Spam notice */}
-              <p className="text-xs text-gray-400 mt-3">
-                {inv.checkSpam || 'Check your spam folder if you don\'t see the email'}
-              </p>
+              <p className="text-xs text-gray-400 mt-3">{inv.checkSpam || 'Check spam folder if not received'}</p>
             </div>
           </Card>
         </div>
@@ -514,27 +648,13 @@ export default function InvitePage() {
     )
   }
 
-  // ── Main form ──
+  // ════════════════════════════════════════════
+  // RENDER: Register / Login form
+  // ════════════════════════════════════════════
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-4">
-        {/* Invitation info card */}
-        {invitation && (
-          <Card className="p-4 bg-blue-50 border-blue-200">
-            <div className="flex items-start gap-3">
-              <Building2 className="h-8 w-8 text-blue-600 flex-shrink-0" />
-              <div className="text-sm">
-                <p className="font-semibold text-blue-900">{inv.invitedTo || 'You have been invited to'}</p>
-                <p className="text-blue-800 font-medium text-base">{invitation.propertyName}</p>
-                <div className="flex items-center gap-1 text-blue-700 mt-1">
-                  <MapPin className="h-3 w-3" />
-                  <span>{invitation.propertyAddress}</span>
-                </div>
-                <p className="text-blue-600 mt-1">{inv.owner || 'Owner'}: {invitation.ownerName}</p>
-              </div>
-            </div>
-          </Card>
-        )}
+        <InvitationCard />
 
         <Card className="p-6">
           {step === 'login' ? (
@@ -591,6 +711,7 @@ export default function InvitePage() {
                     </svg>
                     {inv.continueWithGoogle || t.auth.continueWithGoogle}
                   </Button>
+
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
                     <div className="relative flex justify-center text-xs uppercase">
@@ -599,6 +720,7 @@ export default function InvitePage() {
                   </div>
                 </div>
 
+                {/* Name fields */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label>{t.auth.firstName}</Label>
@@ -616,6 +738,7 @@ export default function InvitePage() {
                   </div>
                 </div>
 
+                {/* Email */}
                 <div>
                   <Label>{t.auth.email}</Label>
                   <div className="relative">
@@ -623,6 +746,8 @@ export default function InvitePage() {
                     <Input type="email" placeholder="jan@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="pl-10" required disabled={!!invitation?.invitedEmail} />
                   </div>
                 </div>
+
+                {/* Password */}
                 <div>
                   <Label>{t.auth.password}</Label>
                   <div className="relative">
@@ -631,6 +756,8 @@ export default function InvitePage() {
                   </div>
                   <PasswordStrength password={password} />
                 </div>
+
+                {/* Confirm password */}
                 <div>
                   <Label>{t.auth.confirmPassword}</Label>
                   <div className="relative">
@@ -639,6 +766,7 @@ export default function InvitePage() {
                   </div>
                 </div>
 
+                {/* Terms */}
                 <div className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg">
                   <Checkbox id="terms" checked={termsAccepted} onCheckedChange={(checked) => setTermsAccepted(checked === true)} />
                   <Label htmlFor="terms" className="text-sm text-gray-600 leading-tight cursor-pointer">
