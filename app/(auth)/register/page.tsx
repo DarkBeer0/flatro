@@ -1,13 +1,14 @@
 // app/(auth)/register/page.tsx
 // FIX 2: Не автоматически логинить, а показывать сообщение если авторизован
-// + FIX 3: License Agreement как модальное окно
+// FIX 3: License Agreement как модальное окно
+// FIX 4: OTP verification instead of magic link
 
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle, LogOut, X } from 'lucide-react'
+import { Building2, Mail, Lock, User, Loader2, AlertCircle, CheckCircle, LogOut, X, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,6 +16,8 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { PasswordStrength, validatePassword } from '@/components/password-strength'
 import { createClient } from '@/lib/supabase/client'
+
+const RESEND_COOLDOWN_SECONDS = 60
 
 // ============================================
 // Модальное окно License Agreement (FIX 3)
@@ -73,91 +76,28 @@ function LicenseModal({
                 <li><strong>Арендатор</strong> — Пользователь, приглашённый Владельцем как жилец</li>
               </ul>
 
-              <h3>2. Предмет соглашения</h3>
-              <p>Администрация предоставляет Пользователю доступ к следующим функциям:</p>
-              <ul>
-                <li>Регистрация и управление объектами недвижимости</li>
-                <li>Ведение базы арендаторов</li>
-                <li>Учёт платежей за аренду и коммунальные услуги</li>
-                <li>Генерация договоров аренды</li>
-                <li>Уведомления о платежах и событиях</li>
-              </ul>
-
-              <h3>3. Права и обязанности</h3>
-              <h4>3.1. Обязанности Пользователя</h4>
-              <ul>
-                <li>Предоставлять достоверные данные при регистрации</li>
-                <li>Обеспечивать конфиденциальность учётных данных</li>
-                <li>Не использовать Сервис для незаконной деятельности</li>
-                <li>Соблюдать права интеллектуальной собственности</li>
-              </ul>
-
-              <h3>4. Конфиденциальность</h3>
-              <p>
-                Обработка персональных данных осуществляется в соответствии с 
-                Политикой конфиденциальности. Администрация обрабатывает данные 
-                в соответствии с GDPR.
-              </p>
-
-              <h3>5. Ответственность</h3>
-              <p>Администрация не несёт ответственности за:</p>
-              <ul>
-                <li>Убытки, возникшие в результате действий Пользователя</li>
-                <li>Содержание данных, загружаемых Пользователем</li>
-                <li>Юридическую силу документов, сгенерированных с помощью Сервиса</li>
-              </ul>
-
-              <p className="text-sm text-gray-500 mt-4">
-                Последнее обновление: 1 января 2025 • Версия 1.0
-              </p>
+              <h3>2. Условия использования</h3>
+              <p>Используя сервис Flatro, вы соглашаетесь с данными условиями...</p>
             </div>
           ) : (
             <div className="prose prose-sm max-w-none">
-              <h3>1. Какие данные мы собираем</h3>
+              <h3>Политика конфиденциальности</h3>
+              <p>Мы серьёзно относимся к защите ваших персональных данных...</p>
+              
+              <h4>Какие данные мы собираем</h4>
               <ul>
-                <li>Контактные данные (email, телефон)</li>
-                <li>Личные данные (имя, фамилия)</li>
-                <li>Данные о недвижимости</li>
-                <li>Финансовая информация о платежах</li>
+                <li>Имя и фамилия</li>
+                <li>Адрес электронной почты</li>
+                <li>Данные об объектах недвижимости</li>
               </ul>
-
-              <h3>2. Как мы используем данные</h3>
-              <ul>
-                <li>Для предоставления услуг сервиса</li>
-                <li>Для связи с вами по вопросам аккаунта</li>
-                <li>Для улучшения качества сервиса</li>
-              </ul>
-
-              <h3>3. Защита данных</h3>
-              <p>
-                Мы используем современные методы шифрования и защиты данных. 
-                Доступ к персональным данным имеют только авторизованные сотрудники.
-              </p>
-
-              <h3>4. Ваши права (GDPR)</h3>
-              <ul>
-                <li>Право на доступ к своим данным</li>
-                <li>Право на исправление данных</li>
-                <li>Право на удаление данных</li>
-                <li>Право на переносимость данных</li>
-              </ul>
-
-              <h3>5. Контакты</h3>
-              <p>
-                По вопросам обработки персональных данных: support@flatro.app
-              </p>
-
-              <p className="text-sm text-gray-500 mt-4">
-                Последнее обновление: 1 января 2025 • Версия 1.0
-              </p>
             </div>
           )}
         </div>
-        
+
         {/* Footer */}
         <div className="p-4 border-t">
           <Button onClick={onClose} className="w-full">
-            Закрыть
+            Понятно
           </Button>
         </div>
       </div>
@@ -166,38 +106,23 @@ function LicenseModal({
 }
 
 // ============================================
-// Компонент для авторизованного пользователя (FIX 2)
+// Компонент "Уже авторизован" (FIX 2)
 // ============================================
-function AlreadyLoggedIn({ 
-  email, 
-  onLogout 
-}: { 
-  email: string
-  onLogout: () => void 
-}) {
-  const router = useRouter()
-
+function AlreadyLoggedIn({ email, onLogout }: { email: string; onLogout: () => void }) {
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8">
-        <div className="text-center mb-6">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="h-8 w-8 text-blue-600" />
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900">Вы уже авторизованы</h1>
-          <p className="text-gray-500 mt-2">
-            Вы вошли как <span className="font-medium">{email}</span>
-          </p>
-        </div>
-
+      <Card className="w-full max-w-md p-8 text-center">
+        <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
+        <h2 className="text-xl font-semibold mb-2">Вы уже авторизованы</h2>
+        <p className="text-gray-600 mb-4">
+          Вы вошли как <span className="font-medium">{email}</span>
+        </p>
         <div className="space-y-3">
-          <Button 
-            onClick={() => router.push('/dashboard')} 
-            className="w-full"
-          >
-            Перейти в личный кабинет
-          </Button>
-          
+          <Link href="/dashboard">
+            <Button className="w-full">
+              Перейти в панель управления
+            </Button>
+          </Link>
           <Button 
             onClick={onLogout} 
             variant="outline" 
@@ -228,7 +153,7 @@ function RegisterForm() {
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [success, setSuccess] = useState(false)
+  const [step, setStep] = useState<'form' | 'verify'>('form')
   
   // FIX 2: Проверка авторизации
   const [checkingAuth, setCheckingAuth] = useState(true)
@@ -237,6 +162,13 @@ function RegisterForm() {
   // FIX 3: Модальные окна
   const [showTermsModal, setShowTermsModal] = useState(false)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false)
+
+  // FIX 4: OTP state
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', ''])
+  const [resendCooldown, setResendCooldown] = useState(0)
+  const [resending, setResending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
   // Проверяем авторизацию при загрузке
   useEffect(() => {
@@ -259,6 +191,21 @@ function RegisterForm() {
       router.replace(`/invite/${inviteCode}`)
     }
   }, [inviteCode, router, checkingAuth, currentUser])
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => setResendCooldown(prev => prev - 1), 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendCooldown])
+
+  // Auto-focus first OTP input
+  useEffect(() => {
+    if (step === 'verify') {
+      setTimeout(() => inputRefs.current[0]?.focus(), 100)
+    }
+  }, [step])
 
   // FIX 2: Функция выхода
   async function handleLogout() {
@@ -362,12 +309,141 @@ function RegisterForm() {
       return
     }
 
-    // Успешная регистрация
+    // If auto-confirmed (when email confirmation is disabled)
+    if (authData?.session) {
+      router.push('/dashboard')
+      return
+    }
+
+    // Go to OTP verification step
     if (authData?.user) {
-      setSuccess(true)
+      setResendCooldown(RESEND_COOLDOWN_SECONDS)
+      setStep('verify')
     }
     
     setLoading(false)
+  }
+
+  // ── OTP handlers ──
+  function handleOtpChange(index: number, value: string) {
+    const digit = value.replace(/\D/g, '').slice(-1)
+    const newDigits = [...otpDigits]
+    newDigits[index] = digit
+    setOtpDigits(newDigits)
+
+    if (digit && index < 5) {
+      inputRefs.current[index + 1]?.focus()
+    }
+
+    if (digit && index === 5) {
+      const fullCode = newDigits.join('')
+      if (fullCode.length === 6) {
+        handleVerifyOtp(fullCode)
+      }
+    }
+  }
+
+  function handleOtpKeyDown(index: number, e: React.KeyboardEvent) {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus()
+    }
+  }
+
+  function handleOtpPaste(e: React.ClipboardEvent) {
+    e.preventDefault()
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (pasted.length > 0) {
+      const newDigits = [...otpDigits]
+      for (let i = 0; i < 6; i++) {
+        newDigits[i] = pasted[i] || ''
+      }
+      setOtpDigits(newDigits)
+
+      const nextEmpty = newDigits.findIndex(d => !d)
+      const focusIdx = nextEmpty === -1 ? 5 : nextEmpty
+      inputRefs.current[focusIdx]?.focus()
+
+      if (pasted.length === 6) {
+        handleVerifyOtp(pasted)
+      }
+    }
+  }
+
+  async function handleVerifyOtp(otpCode?: string) {
+    const token = otpCode || otpDigits.join('')
+    if (token.length !== 6) {
+      setError('Введите все 6 цифр кода')
+      return
+    }
+
+    setVerifying(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'signup',
+      })
+
+      if (verifyError) {
+        setError('Неверный или просроченный код. Попробуйте ещё раз.')
+        setOtpDigits(['', '', '', '', '', ''])
+        inputRefs.current[0]?.focus()
+        setVerifying(false)
+        return
+      }
+
+      if (data.session) {
+        // Successfully verified — redirect to dashboard
+        router.push('/dashboard')
+        router.refresh()
+      } else {
+        setError('Верификация прошла, но сессия не создана. Попробуйте войти.')
+        setVerifying(false)
+      }
+    } catch (err) {
+      console.error('OTP verification error:', err)
+      setError('Произошла ошибка. Попробуйте ещё раз.')
+      setVerifying(false)
+    }
+  }
+
+  async function handleResendOtp() {
+    if (resendCooldown > 0 || resending) return
+
+    setResending(true)
+    setError(null)
+
+    try {
+      const supabase = createClient()
+      const { error: resendError } = await supabase.auth.resend({
+        type: 'signup',
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      })
+
+      if (resendError) {
+        setError(resendError.message)
+      } else {
+        setResendCooldown(RESEND_COOLDOWN_SECONDS)
+        setOtpDigits(['', '', '', '', '', ''])
+        inputRefs.current[0]?.focus()
+      }
+    } catch {
+      setError('Не удалось отправить код повторно')
+    } finally {
+      setResending(false)
+    }
+  }
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return mins > 0 ? `${mins}:${secs.toString().padStart(2, '0')}` : `${secs}с`
   }
 
   // Показываем загрузку пока проверяем авторизацию
@@ -384,23 +460,103 @@ function RegisterForm() {
     return <AlreadyLoggedIn email={currentUser.email} onLogout={handleLogout} />
   }
 
-  // Успешная регистрация
-  if (success) {
+  // ── OTP Verification step ──
+  if (step === 'verify') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md p-8 text-center">
-          <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Проверьте почту</h2>
-          <p className="text-gray-600 mb-4">
-            Мы отправили письмо на <span className="font-medium">{email}</span>.
-            Перейдите по ссылке в письме для подтверждения регистрации.
-          </p>
-          <Link href="/login">
-            <Button variant="outline" className="w-full">
-              Перейти к входу
+        <div className="w-full max-w-md">
+          {/* Logo */}
+          <div className="text-center mb-8">
+            <Link href="/" className="inline-flex items-center gap-2">
+              <Building2 className="h-8 w-8 text-blue-600" />
+              <span className="text-2xl font-bold text-gray-900">Flatro</span>
+            </Link>
+          </div>
+
+          <Card className="p-6">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mail className="h-8 w-8 text-blue-600" />
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">
+                Введите код подтверждения
+              </h2>
+              <p className="text-gray-600 text-sm">
+                Мы отправили 6-значный код на{' '}
+                <span className="font-medium text-gray-900">{email}</span>
+              </p>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm flex items-center gap-2 mb-4">
+                <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* OTP Input */}
+            <div className="flex justify-center gap-2 mb-6" onPaste={handleOtpPaste}>
+              {otpDigits.map((digit, index) => (
+                <input
+                  key={index}
+                  ref={el => { inputRefs.current[index] = el }}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={1}
+                  value={digit}
+                  onChange={(e) => handleOtpChange(index, e.target.value)}
+                  onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                  className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all"
+                  disabled={verifying}
+                />
+              ))}
+            </div>
+
+            <Button
+              onClick={() => handleVerifyOtp()}
+              className="w-full mb-4"
+              disabled={verifying || otpDigits.join('').length !== 6}
+            >
+              {verifying ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                'Подтвердить и продолжить'
+              )}
             </Button>
-          </Link>
-        </Card>
+
+            {/* Resend */}
+            <div className="text-center">
+              <p className="text-sm text-gray-500 mb-2">Не получили код?</p>
+              <button
+                onClick={handleResendOtp}
+                disabled={resendCooldown > 0 || resending}
+                className="text-sm text-blue-600 hover:text-blue-700 hover:underline disabled:text-gray-400 disabled:no-underline flex items-center gap-1 mx-auto"
+              >
+                {resending ? (
+                  <>
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    Отправка...
+                  </>
+                ) : resendCooldown > 0 ? (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    Повторить через {formatTime(resendCooldown)}
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3" />
+                    Отправить повторно
+                  </>
+                )}
+              </button>
+
+              <p className="text-xs text-gray-400 mt-3">
+                Проверьте папку «Спам», если письмо не пришло
+              </p>
+            </div>
+          </Card>
+        </div>
       </div>
     )
   }
@@ -464,7 +620,7 @@ function RegisterForm() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
                 />
               </svg>
-              Продолжить с Google
+              Продолжить через Google
             </Button>
 
             <div className="relative">
@@ -475,6 +631,7 @@ function RegisterForm() {
                 <span className="bg-white px-2 text-gray-500">или</span>
               </div>
             </div>
+
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label htmlFor="firstName">Имя</Label>
@@ -482,7 +639,6 @@ function RegisterForm() {
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
                     id="firstName"
-                    type="text"
                     placeholder="Иван"
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
@@ -493,14 +649,17 @@ function RegisterForm() {
               </div>
               <div>
                 <Label htmlFor="lastName">Фамилия</Label>
-                <Input
-                  id="lastName"
-                  type="text"
-                  placeholder="Иванов"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  required
-                />
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="lastName"
+                    placeholder="Петров"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="pl-10"
+                    required
+                  />
+                </div>
               </div>
             </div>
 
@@ -511,7 +670,7 @@ function RegisterForm() {
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="ivan@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10"

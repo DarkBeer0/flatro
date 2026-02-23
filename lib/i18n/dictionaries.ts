@@ -290,6 +290,19 @@ export interface Dictionary {
     uploadError: string
     noPropertyId: string
   }
+  OTP_verification: {
+    enterCode: string
+    otpSentTo: string
+    otpIncomplete: string
+    otpInvalid: string
+    otpNoSession: string
+    verifyAndContinue: string
+    didntReceiveCode: string
+    resendCode: string
+    resendIn: string
+    sending: string
+    checkSpam: string
+  }
 }
 
 export function getDictionary(locale: Locale): Dictionary {
@@ -568,6 +581,19 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Допускаются только фотографии',
       uploadError: 'Ошибка загрузки',
       noPropertyId: 'Отсутствует идентификатор недвижимости',
+    },
+    OTP_verification: {
+      enterCode: 'Введите код подтверждения',
+      otpSentTo: 'Мы отправили 6-значный код на ',
+      otpIncomplete: 'Пожалуйста, введите все 6 цифр',
+      otpInvalid: 'Неверный или просроченный код. Попробуйте ещё раз.',
+      otpNoSession: 'Верификация прошла, но сессия не создана. Попробуйте войти.',
+      verifyAndContinue: 'Подтвердить и продолжить',
+      didntReceiveCode: 'Не получили код?',
+      resendCode: 'Отправить повторно',
+      resendIn: 'Повторить через {time}',
+      sending: 'Отправка...',
+      checkSpam: 'Проверьте папку «Спам», если письмо не пришло',
     }
   },
 
@@ -841,6 +867,19 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Dozwolone tylko zdjęcia',
       uploadError: 'Błąd przesyłania',
       noPropertyId: 'Brak identyfikatora nieruchomości',
+    },
+    OTP_verification: {
+      enterCode: 'Wprowadź kod weryfikacyjny',
+      otpSentTo: 'Wysłaliśmy 6-cyfrowy kod na ',
+      otpIncomplete: 'Proszę wprowadzić wszystkie 6 cyfr',
+      otpInvalid: 'Nieprawidłowy lub wygasły kod. Spróbuj ponownie.',
+      otpNoSession: 'Weryfikacja przebiegła pomyślnie, ale sesja nie została utworzona. Spróbuj się zalogować.',
+      verifyAndContinue: 'Zweryfikuj i kontynuuj',
+      didntReceiveCode: 'Nie otrzymałeś kodu?',
+      resendCode: 'Wyślij ponownie',
+      resendIn: 'Wyślij ponownie za {time}',
+      sending: 'Wysyłanie...',
+      checkSpam: 'Sprawdź folder spam, jeśli nie widzisz wiadomości',
     }
   },
 
@@ -1114,7 +1153,20 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Only photos are allowed',
       uploadError: 'Upload failed',
       noPropertyId: 'Missing property ID',
-}
+    },
+    OTP_verification: {
+      enterCode: 'Enter verification code',
+      otpSentTo: 'We sent a 6-digit code to ',
+      otpIncomplete: 'Please enter all 6 digits',
+      otpInvalid: 'Invalid or expired code. Please try again.',
+      otpNoSession: 'Verification succeeded but no session created. Please try logging in.',
+      verifyAndContinue: 'Verify & continue',
+      didntReceiveCode: "Didn't receive the code?",
+      resendCode: 'Resend code',
+      resendIn: 'Resend in {time}',
+      sending: 'Sending...',
+      checkSpam: "Check your spam folder if you don't see the email",
+    }
   },
 
   // GERMAN
@@ -1387,6 +1439,19 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Nur Fotos erlaubt',
       uploadError: 'Upload fehlgeschlagen',
       noPropertyId: 'Fehlende Immobilien-ID',
+    },
+    OTP_verification: {
+      enterCode: 'Bestätigungscode eingeben',
+      otpSentTo: 'Wir haben einen 6-stelligen Code an ',
+      otpIncomplete: 'Bitte geben Sie alle 6 Ziffern ein',
+      otpInvalid: 'Ungültiger oder abgelaufener Code. Bitte versuchen Sie es erneut.',
+      otpNoSession: 'Verifizierung erfolgreich, aber keine Sitzung erstellt. Bitte versuchen Sie sich anzumelden.',
+      verifyAndContinue: 'Bestätigen und fortfahren',
+      didntReceiveCode: 'Code nicht erhalten?',
+      resendCode: 'Code erneut senden',
+      resendIn: 'Erneut senden in {time}',
+      sending: 'Wird gesendet...',
+      checkSpam: 'Überprüfen Sie Ihren Spam-Ordner, falls die E-Mail nicht ankommt',
     }
   },
 
@@ -1660,6 +1725,19 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Дозволені тільки фотографії',
       uploadError: 'Помилка завантаження',
       noPropertyId: 'Відсутній ідентифікатор нерухомості',
+    },
+    OTP_verification: {
+      enterCode: 'Введіть код підтвердження',
+      otpSentTo: 'Ми надіслали 6-значний код на ',
+      otpIncomplete: 'Будь ласка, введіть всі 6 цифр',
+      otpInvalid: 'Невірний або прострочений код. Спробуйте ще раз.',
+      otpNoSession: 'Верифікація пройшла, але сесію не створено. Спробуйте увійти.',
+      verifyAndContinue: 'Підтвердити та продовжити',
+      didntReceiveCode: 'Не отримали код?',
+      resendCode: 'Надіслати повторно',
+      resendIn: 'Повторити через {time}',
+      sending: 'Надсилання...',
+      checkSpam: 'Перевірте папку «Спам», якщо лист не прийшов',
     }
   },
 
@@ -1933,6 +2011,19 @@ export const dictionaries: Record<Locale, Dictionary> = {
       onlyPhotos: 'Povoleny pouze fotografie',
       uploadError: 'Chyba nahrávání',
       noPropertyId: 'Chybí identifikátor nemovitosti',
+    },
+    OTP_verification: {
+      enterCode: 'Zadejte ověřovací kód',
+      otpSentTo: 'Poslali jsme 6místný kód na ',
+      otpIncomplete: 'Prosím zadejte všech 6 číslic',
+      otpInvalid: 'Neplatný nebo vypršelý kód. Zkuste to znovu.',
+      otpNoSession: 'Ověření proběhlo, ale nebyla vytvořena relace. Zkuste se přihlásit.',
+      verifyAndContinue: 'Ověřit a pokračovat',
+      didntReceiveCode: 'Neobdrželi jste kód?',
+      resendCode: 'Odeslat znovu',
+      resendIn: 'Odeslat znovu za {time}',
+      sending: 'Odesílání...',
+      checkSpam: 'Zkontrolujte složku se spamem, pokud e-mail nevidíte',
     }
   },
 }
