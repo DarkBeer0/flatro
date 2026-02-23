@@ -325,9 +325,15 @@ export default function PropertyDetailPage() {
               <Users className="h-5 w-5 text-green-600" />
               {t.tenants.title}
             </h3>
-            <Link href={`/tenants/new?propertyId=${property.id}`}>
-              <Button size="sm" variant="outline">+ Добавить</Button>
-            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                document.getElementById('invite-section')?.scrollIntoView({ behavior: 'smooth' })
+              }}
+            >
+              + Пригласить
+            </Button>
           </div>
 
           {activeTenants.length > 0 ? (
@@ -357,12 +363,14 @@ export default function PropertyDetailPage() {
         </Card>
 
         {/* ─── Invite Tenant ────────────────────── */}
+        <div id="invite-section">
         <InviteTenant
           propertyId={property.id}
           propertyName={property.name}
           invitations={invitations}
           onInvitationCreated={fetchData}
         />
+      </div>
 
         {/* ─── Contracts (SCROLLABLE) ───────────── */}
         <Card className="p-4 lg:p-6">
