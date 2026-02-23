@@ -4,7 +4,10 @@
  * Путь в проекте: app/api/invitations/[code]/route.ts
  * 
  * GET  /api/invitations/{code} - Получить информацию о приглашении
- * POST /api/invitations/{code} - Принять приглашение (авторизация + редирект)
+ * POST /api/invitations/{code} - Принять приглашение (создать user + tenant)
+ * 
+ * FIX: POST теперь реально создаёт user + tenant в БД
+ *      (раньше только валидировал и возвращал redirectTo)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -66,7 +69,7 @@ const countryToRegion: Record<string, RegionCode> = {
 }
 
 // ============================================
-// GET: Информация о приглашении
+// GET: Информация о приглашении (без изменений)
 // ============================================
 
 export async function GET(
@@ -76,7 +79,6 @@ export async function GET(
   try {
     const { code } = await params
 
-    // Поиск приглашения
     const invitation = await prisma.invitation.findFirst({
       where: {
         code: code,
@@ -92,34 +94,46 @@ export async function GET(
             name: true,
             address: true,
             city: true,
-            country: true
+            userId: true,
+            country: true,
           }
         }
       }
     })
 
     if (!invitation) {
+      // Проверяем существует ли вообще
+      const anyInvite = await prisma.invitation.findFirst({
+        where: { code },
+        select: { status: true, expiresAt: true }
+      })
+      
+      if (!anyInvite) {
+        return NextResponse.json(
+          { error: 'Приглашение не найдено', code: 'NOT_FOUND' },
+          { status: 404 }
+        )
+      }
+      
+      if (anyInvite.status !== 'PENDING') {
+        return NextResponse.json(
+          { error: 'Приглашение уже использовано', code: 'ALREADY_USED' },
+          { status: 410 }
+        )
+      }
+      
       return NextResponse.json(
-        { error: 'Приглашение не найдено, уже использовано или истекло' },
-        { status: 404 }
+        { error: 'Приглашение истекло', code: 'EXPIRED' },
+        { status: 410 }
       )
     }
 
-    // Получаем владельца - используем firstName/lastName вместо name
-    const owner = await prisma.user.findFirst({
-      where: {
-        properties: {
-          some: { id: invitation.propertyId }
-        }
-      },
-      select: {
-        firstName: true,
-        lastName: true,
-        email: true
-      }
+    // Получаем имя владельца
+    const owner = await prisma.user.findUnique({
+      where: { id: invitation.property.userId },
+      select: { firstName: true, lastName: true, email: true }
     })
 
-    // Собираем полное имя владельца
     const ownerName = owner 
       ? [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Владелец'
       : 'Владелец'
@@ -138,7 +152,6 @@ export async function GET(
       ownerEmail: owner?.email,
       expiresAt: invitation.expiresAt.toISOString(),
       suggestedRegion,
-      // Если приглашение на конкретный email
       invitedEmail: invitation.email
     })
 
@@ -152,7 +165,7 @@ export async function GET(
 }
 
 // ============================================
-// POST: Принять приглашение
+// POST: Принять приглашение — СОЗДАЁТ USER + TENANT
 // ============================================
 
 export async function POST(
@@ -162,7 +175,7 @@ export async function POST(
   try {
     const { code } = await params
 
-    // Проверка авторизации
+    // ── 1. Auth check ──
     const supabase = await createSupabaseClient()
     const { data: { session }, error: authError } = await supabase.auth.getSession()
     
@@ -175,15 +188,14 @@ export async function POST(
 
     const userId = session.user.id
     const userEmail = session.user.email
+    const userMetadata = session.user.user_metadata || {}
 
-    // Поиск приглашения
+    // ── 2. Find invitation ──
     const invitation = await prisma.invitation.findFirst({
       where: {
         code: code,
         status: 'PENDING',
-        expiresAt: {
-          gt: new Date()
-        }
+        expiresAt: { gt: new Date() }
       },
       include: {
         property: {
@@ -203,7 +215,7 @@ export async function POST(
       )
     }
 
-    // Проверка: приглашение на конкретный email?
+    // ── 3. Validate: email match ──
     if (invitation.email && invitation.email.toLowerCase() !== userEmail?.toLowerCase()) {
       return NextResponse.json(
         { error: 'Это приглашение предназначено для другого email' },
@@ -211,7 +223,7 @@ export async function POST(
       )
     }
 
-    // Проверка: пользователь не является владельцем этой недвижимости
+    // ── 4. Validate: not self-invite ──
     if (invitation.property.userId === userId) {
       return NextResponse.json(
         { error: 'Вы не можете принять приглашение на собственную недвижимость' },
@@ -219,7 +231,7 @@ export async function POST(
       )
     }
 
-    // Проверка: пользователь уже является жильцом этой недвижимости
+    // ── 5. Validate: not duplicate ──
     const existingTenant = await prisma.tenant.findFirst({
       where: {
         propertyId: invitation.propertyId,
@@ -229,22 +241,111 @@ export async function POST(
     })
 
     if (existingTenant) {
-      return NextResponse.json(
-        { error: 'Вы уже являетесь жильцом этой недвижимости' },
-        { status: 400 }
-      )
+      // Already a tenant — just mark invite as used and redirect
+      await prisma.invitation.update({
+        where: { id: invitation.id },
+        data: { status: 'ACCEPTED', usedAt: new Date(), usedBy: userId },
+      })
+      return NextResponse.json({
+        success: true,
+        message: 'Вы уже являетесь жильцом этой недвижимости',
+        alreadyTenant: true,
+      })
     }
 
-    // ============================================
-    // ВАЖНО: Редирект на страницу завершения регистрации
-    // Вместо автоматического создания tenant здесь,
-    // перенаправляем на форму для ввода полных данных
-    // ============================================
+    // ── 6. Extract name from Supabase metadata ──
+    const firstName = userMetadata.first_name || 
+                      (userMetadata.name || '').split(' ')[0] || 
+                      'Tenant'
+    const lastName = userMetadata.last_name || 
+                     (userMetadata.name || '').split(' ').slice(1).join(' ') || 
+                     ''
+
+    const regionCode: RegionCode = invitation.property.country
+      ? (countryToRegion[invitation.property.country] || 'PL')
+      : 'PL'
+
+    const now = new Date()
+
+    // ── 7. Transaction: create user + tenant + update invitation + property ──
+    const result = await prisma.$transaction(async (tx) => {
+      // 7a. Ensure user exists in DB
+      let dbUser = await tx.user.findUnique({ where: { id: userId } })
+
+      if (!dbUser) {
+        dbUser = await tx.user.create({
+          data: {
+            id: userId,
+            email: userEmail!,
+            firstName,
+            lastName,
+            isOwner: false,
+            isTenant: true,
+            regionCode,
+            termsAcceptedAt: now,
+            privacyAcceptedAt: now,
+            termsVersion: '1.0',
+          },
+        })
+      } else {
+        // Update existing user to also be tenant
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            isTenant: true,
+            // Fill in missing fields if needed
+            firstName: dbUser.firstName || firstName,
+            lastName: dbUser.lastName || lastName,
+            termsAcceptedAt: dbUser.termsAcceptedAt || now,
+            privacyAcceptedAt: dbUser.privacyAcceptedAt || now,
+            termsVersion: dbUser.termsVersion || '1.0',
+          },
+        })
+      }
+
+      // 7b. Create tenant record
+      const tenant = await tx.tenant.create({
+        data: {
+          userId: invitation.property.userId,  // Owner's user ID
+          propertyId: invitation.property.id,
+          tenantUserId: userId,                // Tenant's user ID
+          firstName: dbUser?.firstName || firstName,
+          lastName: dbUser?.lastName || lastName,
+          email: userEmail || null,
+          regionCode,
+          moveInDate: now,
+          isActive: true,
+          termsAcceptedAt: now,
+          termsVersion: '1.0',
+          registrationCompletedAt: now,
+        },
+      })
+
+      // 7c. Mark invitation as used
+      await tx.invitation.update({
+        where: { id: invitation.id },
+        data: {
+          status: 'ACCEPTED',
+          usedAt: now,
+          usedBy: userId,
+          tenantId: tenant.id,
+        },
+      })
+
+      // 7d. Update property status
+      await tx.property.update({
+        where: { id: invitation.property.id },
+        data: { status: 'OCCUPIED' },
+      })
+
+      return tenant
+    })
+
+    console.log(`[Accept Invitation] Success: user=${userId}, tenant=${result.id}, property=${invitation.property.id}`)
 
     return NextResponse.json({
       success: true,
-      message: 'Приглашение валидно. Перенаправление на завершение регистрации.',
-      redirectTo: `/invite/complete/${code}`
+      tenantId: result.id,
     })
 
   } catch (error) {

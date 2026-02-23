@@ -26,7 +26,7 @@ export async function GET() {
         bankName: true,
         iban: true,
         accountHolder: true,
-        tenantProfile: {
+        tenantProfiles: {
           where: { isActive: true },
           include: {
             property: {
@@ -72,7 +72,8 @@ export async function GET() {
       accountHolder: dbUser.accountHolder,
       
       // Профиль жильца (если есть активная аренда)
-      tenantProfile: dbUser.tenantProfile,
+      tenantProfiles: dbUser.tenantProfiles,
+      tenantProfile: dbUser.tenantProfiles[0] || null,
     })
   } catch (error) {
     console.error('Error getting user:', error)

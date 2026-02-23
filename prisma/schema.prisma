@@ -65,7 +65,7 @@ model User {
   payments   Payment[]
 
   // Relations — TENANT
-  tenantProfile Tenant? @relation("TenantUser")
+  tenantProfiles Tenant[] @relation("TenantUser")
 
   // Сообщения
   sentMessages     Message[] @relation("SentMessages")
@@ -180,7 +180,7 @@ model Tenant {
   id           String  @id @default(uuid())
   userId       String
   propertyId   String?
-  tenantUserId String? @unique
+  tenantUserId String?
   firstName    String
   lastName     String
   email        String?
