@@ -1,24 +1,22 @@
 // app/api/messages/[propertyId]/route.ts
 // ============================================================
-// BUG 2 FIX — Chat Privacy / Data Leak
+// FIX OWNER MESSAGE SCOPING (v2)
 // ============================================================
-// PROBLEM: Messages were fetched with only `propertyId` as filter.
-//   When Test #2 (new tenant) opened the chat they received ALL
-//   messages including the previous tenant's (Test #1) conversation.
+// PROBLEM: Owner still saw Test #1's messages when opening chat,
+//   because the query filtered only by propertyId — no tenant scope.
 //
-// FIX: For non-owner users (tenants) we add an additional filter:
-//   { OR: [ { senderId: authUser.id }, { receiverId: authUser.id } ] }
-//   Owners can still see ALL messages for a property (needed for
-//   multi-tenant properties where the owner wants history per tenant).
+// FIX: For owners, add an OR filter so only messages exchanged
+//   with the CURRENT active tenant(s) are returned:
+//     senderId=owner AND receiverId IN (activeTenants)
+//     OR senderId IN (activeTenants) AND receiverId=owner
 //
-// COPY THIS FILE TO:  app/api/messages/[propertyId]/route.ts
+// This mirrors exactly the tenant-side fix from the previous patch.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
-// GET /api/messages/[propertyId]
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ propertyId: string }> }
@@ -36,7 +34,6 @@ export async function GET(
     const cursor = searchParams.get('cursor')
     const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
 
-    // Check access
     const [property, dbUser, tenantRecord] = await Promise.all([
       prisma.property.findUnique({
         where: { id: propertyId },
@@ -56,21 +53,16 @@ export async function GET(
       }),
       prisma.user.findUnique({
         where: { id: authUser.id },
-        select: { id: true, firstName: true, lastName: true, isOwner: true, isTenant: true },
+        select: { id: true, isOwner: true, isTenant: true },
       }),
       prisma.tenant.findFirst({
-        where: { tenantUserId: authUser.id, propertyId: propertyId, isActive: true },
+        where: { tenantUserId: authUser.id, propertyId, isActive: true },
         select: { id: true },
       }),
     ])
 
-    if (!property) {
-      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-    }
-
-    if (!dbUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
+    if (!property) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
+    if (!dbUser) return NextResponse.json({ error: 'User not found' }, { status: 404 })
 
     const isOwner = property.userId === authUser.id
     const isTenantOfProperty = !!tenantRecord
@@ -80,29 +72,55 @@ export async function GET(
     }
 
     // ─────────────────────────────────────────────────────────
-    // BUG 2 FIX: Build the message filter
+    // MESSAGE PRIVACY FILTER
     //
-    // Owners see ALL messages for the property (so they can read
-    // the full conversation thread with each tenant).
+    // Both owners AND tenants now only see messages that belong
+    // to their specific conversation, preventing cross-tenant leaks.
     //
-    // Tenants see ONLY messages they personally sent or received.
-    // This prevents a new tenant from seeing a previous tenant's
-    // conversation with the owner.
+    // OWNER: only messages exchanged with the current active tenant(s).
+    // TENANT: only messages they personally sent or received.
     // ─────────────────────────────────────────────────────────
     const messageWhere: Record<string, unknown> = {
       propertyId,
       ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
     }
 
-    if (!isOwner && isTenantOfProperty) {
-      // Strict privacy: tenant can only read their own conversation
+    if (isOwner) {
+      // Collect user IDs of all currently active tenants
+      const activeTenantUserIds = property.tenants
+        .map((t) => t.tenantUserId)
+        .filter((id): id is string => !!id)
+
+      if (activeTenantUserIds.length > 0) {
+        // Show only messages between the owner and active tenants
+        messageWhere.OR = [
+          {
+            senderId: authUser.id,
+            receiverId: { in: activeTenantUserIds },
+          },
+          {
+            senderId: { in: activeTenantUserIds },
+            receiverId: authUser.id,
+          },
+        ]
+      } else {
+        // No active tenants — return empty (no messages to show)
+        return NextResponse.json({
+          messages: [],
+          property: { id: property.id, name: property.name, address: property.address },
+          chatPartner: null,
+          currentUserId: authUser.id,
+          nextCursor: null,
+        })
+      }
+    } else if (isTenantOfProperty) {
+      // Tenant sees only their own conversation
       messageWhere.OR = [
         { senderId: authUser.id },
         { receiverId: authUser.id },
       ]
     }
 
-    // Fetch messages
     const messages = await prisma.message.findMany({
       where: messageWhere,
       orderBy: { createdAt: 'desc' },
@@ -127,16 +145,20 @@ export async function GET(
       },
     })
 
-    // Collect attachment paths for signed URLs
+    // Generate signed URLs for attachments
     const attachmentPaths = messages
       .filter((m) => m.attachmentPath)
       .map((m) => m.attachmentPath!)
 
     let signedUrls: Record<string, string> = {}
     if (attachmentPaths.length > 0) {
-      const { data: urlsData } = await supabase.storage
+      const { data: urlsData, error: urlsError } = await supabase.storage
         .from('attachments')
         .createSignedUrls(attachmentPaths, 3600)
+
+      if (urlsError) {
+        console.error('[Messages] Signed URL error:', urlsError.message)
+      }
 
       urlsData?.forEach((item) => {
         if (item.signedUrl && item.path) {
@@ -145,15 +167,9 @@ export async function GET(
       })
     }
 
-    // Build chat partner info
+    // Build chat partner
     let chatPartner
     if (isOwner) {
-      // ─────────────────────────────────────────────────────
-      // BUG 2 NOTE: When the owner views the chat with a *specific*
-      // tenant we should ideally scope it to that tenant.
-      // For now we return the first ACTIVE tenant (as before).
-      // Future: add ?tenantId= param to scope per-tenant.
-      // ─────────────────────────────────────────────────────
       const tenant = property.tenants[0]
       chatPartner = tenant
         ? {
@@ -164,11 +180,12 @@ export async function GET(
     } else {
       chatPartner = {
         id: property.user.id,
-        name: [property.user.firstName, property.user.lastName].filter(Boolean).join(' ') || property.user.email,
+        name:
+          [property.user.firstName, property.user.lastName].filter(Boolean).join(' ') ||
+          property.user.email,
       }
     }
 
-    // Format response
     const formattedMessages = messages.reverse().map((m) => ({
       id: m.id,
       content: m.content,
@@ -186,7 +203,8 @@ export async function GET(
         : null,
       sender: {
         id: m.sender.id,
-        name: [m.sender.firstName, m.sender.lastName].filter(Boolean).join(' ') || 'Użytkownik',
+        name:
+          [m.sender.firstName, m.sender.lastName].filter(Boolean).join(' ') || 'Użytkownik',
       },
     }))
 
@@ -218,15 +236,8 @@ export async function POST(
 
     const { propertyId } = await params
     const body = await request.json()
-    const {
-      content,
-      receiverId,
-      attachmentPath,
-      attachmentMetadata,
-      issueId,
-    } = body
+    const { content, receiverId, attachmentPath, attachmentMetadata, issueId } = body
 
-    // Must have content OR attachment
     if (!content?.trim() && !attachmentPath) {
       return NextResponse.json(
         { error: 'Wiadomość musi zawierać tekst lub zdjęcie' },
@@ -246,9 +257,7 @@ export async function POST(
       },
     })
 
-    if (!property) {
-      return NextResponse.json({ error: 'Property not found' }, { status: 404 })
-    }
+    if (!property) return NextResponse.json({ error: 'Property not found' }, { status: 404 })
 
     const isOwner = property.userId === authUser.id
     const isTenant = property.tenants.some((t) => t.tenantUserId === authUser.id)
@@ -257,7 +266,6 @@ export async function POST(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Determine receiver
     let targetReceiverId = receiverId
     if (!targetReceiverId) {
       if (isTenant) {
@@ -271,14 +279,11 @@ export async function POST(
       return NextResponse.json({ error: 'No recipient available' }, { status: 400 })
     }
 
-    // Validate issueId if provided
     if (issueId) {
       const issue = await prisma.issue.findFirst({
         where: { id: issueId, propertyId, isDeleted: false },
       })
-      if (!issue) {
-        return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
-      }
+      if (!issue) return NextResponse.json({ error: 'Issue not found' }, { status: 404 })
     }
 
     const message = await prisma.message.create({
@@ -311,12 +316,15 @@ export async function POST(
       },
     })
 
-    // Generate signed URL for the attachment if present
+    // Generate signed URL for attachment
     let attachmentUrl = null
     if (message.attachmentPath) {
-      const { data } = await supabase.storage
+      const { data, error } = await supabase.storage
         .from('attachments')
         .createSignedUrl(message.attachmentPath, 3600)
+      if (error) {
+        console.error('[Messages POST] Signed URL error:', error.message)
+      }
       attachmentUrl = data?.signedUrl || null
     }
 
@@ -337,7 +345,9 @@ export async function POST(
           : null,
         sender: {
           id: message.sender.id,
-          name: [message.sender.firstName, message.sender.lastName].filter(Boolean).join(' ') || 'Użytkownik',
+          name:
+            [message.sender.firstName, message.sender.lastName].filter(Boolean).join(' ') ||
+            'Użytkownik',
         },
       },
       { status: 201 }

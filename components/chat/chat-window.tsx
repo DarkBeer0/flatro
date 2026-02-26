@@ -1,21 +1,19 @@
 // components/chat/chat-window.tsx
 // ============================================================
-// BUG 1 FIX — Lack of Real-time Reactivity
+// FIX: Optimistic photo preview in chat
 // ============================================================
-// PROBLEM: The ChatWindow only used polling (setInterval every 5 s).
-//   The `useRealtimeMessages` hook existed but was NEVER imported or
-//   used here. Both the Owner and Tenant had to wait for the next
-//   polling tick (up to 5 s) to see a new message.
+// PROBLEM: When sending a photo, the optimistic (temporary) message
+//   had `attachmentUrl: undefined` — so no image was shown until the
+//   server responded. If the server's signed URL also failed (e.g.
+//   missing storage RLS), the bubble showed only a bare timestamp.
 //
-// FIX: Import and wire up `useRealtimeMessages`. The hook subscribes
-//   to Supabase `postgres_changes` on the `Message` table filtered by
-//   `propertyId`. New messages now arrive instantly via WebSocket.
-//   Polling is kept as a safety net (30 s instead of 5 s) in case
-//   the WebSocket connection is unavailable.
+// FIX: `MessageInput` now passes `localPreviewUrl` (blob URL) through
+//   the `AttachmentData` type. The optimistic message uses this as a
+//   temporary `attachmentUrl` so the image is visible immediately.
+//   After the server responds, the blob URL is replaced with the
+//   proper signed URL from Supabase Storage.
 //
-// PREREQUISITE (Supabase Dashboard — one-time setup):
-//   Run the SQL in fix-bug1--supabase-realtime.sql in the
-//   Supabase SQL Editor to enable replication on the Message table.
+// NOTE: This file pairs with the updated message-input.tsx below.
 // ============================================================
 'use client'
 
@@ -27,9 +25,11 @@ import { useRealtimeMessages } from './use-realtime-messages'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
 
+// UPDATED: Added localPreviewUrl for optimistic photo display
 interface AttachmentData {
   path: string
   metadata: { width: number; height: number; size: number; mime_type: string }
+  localPreviewUrl?: string // blob URL for instant preview before server responds
 }
 
 interface Message {
@@ -47,38 +47,17 @@ interface Message {
     size?: number
     mime_type?: string
   } | null
-  issueRef?: {
-    id: string
-    title: string
-    status: string
-  } | null
-  sender: {
-    id: string
-    name: string | null
-  }
+  issueRef?: { id: string; title: string; status: string } | null
+  sender: { id: string; name: string | null }
 }
 
-interface ChatPartner {
-  id: string
-  name: string | null
-  email?: string
-}
-
-interface Property {
-  id: string
-  name: string
-  address: string
-}
+interface ChatPartner { id: string; name: string | null; email?: string }
+interface Property { id: string; name: string; address: string }
 
 interface ChatWindowProps {
   propertyId: string
   backLink?: string
   backLabel?: string
-  /**
-   * Fallback polling interval in ms.
-   * Realtime WebSocket is primary; polling is a safety net.
-   * Default: 30 000 ms (was 5 000 ms before this fix).
-   */
   pollingInterval?: number
 }
 
@@ -86,11 +65,10 @@ export function ChatWindow({
   propertyId,
   backLink,
   backLabel,
-  pollingInterval = 30_000, // reduced frequency — realtime handles instant updates
+  pollingInterval = 30_000,
 }: ChatWindowProps) {
   const { t } = useLocale()
   const chatDict = (t as any).chat || {}
-
   const resolvedBackLabel = backLabel || t.common.back
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -127,15 +105,11 @@ export function ChatWindow({
       try {
         const res = await fetch(`/api/messages/${propertyId}`)
         if (!res.ok) throw new Error(chatDict.loadError || 'Failed to load messages')
-
         const data = await res.json()
-
         if (data.property) setProperty(data.property)
         if (data.chatPartner) setChatPartner(data.chatPartner)
         if (data.currentUserId) setCurrentUserId(data.currentUserId)
-
         updateMessages(data.messages || [])
-
         if (isInitial) {
           setLoading(false)
           setTimeout(() => scrollToBottom(true), 100)
@@ -158,44 +132,27 @@ export function ChatWindow({
     }
   }, [propertyId])
 
-  // Initial load
   useEffect(() => {
     fetchMessages(true)
     markAsRead()
   }, [fetchMessages, markAsRead])
 
-  // ─────────────────────────────────────────────────────────
-  // BUG 1 FIX: Supabase Realtime subscription
-  //
-  // When the OTHER party sends a message the hook fires
-  // `onNewMessage` immediately via WebSocket — no polling delay.
-  // ─────────────────────────────────────────────────────────
+  // Realtime subscription
   useRealtimeMessages({
     propertyId,
     currentUserId,
     enabled: !loading && !!currentUserId,
-
-    onNewMessage: useCallback(
-      (realtimeMsg) => {
-        // A new message arrived from the other party.
-        // Re-fetch so we get the full payload (signedUrls, senderName, etc.)
-        fetchMessages()
-        markAsRead()
-        shouldScrollToBottom.current = true
-      },
-      [fetchMessages, markAsRead]
-    ),
-
-    onMessageUpdated: useCallback(
-      (realtimeMsg) => {
-        // e.g. isRead flipped to true — re-fetch to sync read receipts
-        fetchMessages()
-      },
-      [fetchMessages]
-    ),
+    onNewMessage: useCallback(() => {
+      fetchMessages()
+      markAsRead()
+      shouldScrollToBottom.current = true
+    }, [fetchMessages, markAsRead]),
+    onMessageUpdated: useCallback(() => {
+      fetchMessages()
+    }, [fetchMessages]),
   })
 
-  // Fallback polling (safety net for environments where WebSocket is blocked)
+  // Fallback polling
   useEffect(() => {
     const interval = setInterval(() => {
       fetchMessages()
@@ -207,12 +164,10 @@ export function ChatWindow({
   useEffect(() => {
     const container = messagesContainerRef.current
     if (!container) return
-
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container
       shouldScrollToBottom.current = scrollHeight - scrollTop - clientHeight < 100
     }
-
     container.addEventListener('scroll', handleScroll)
     return () => container.removeEventListener('scroll', handleScroll)
   }, [])
@@ -227,7 +182,6 @@ export function ChatWindow({
 
       const hasContent = !!content.trim()
       const hasAttachment = !!attachment
-
       if (!hasContent && !hasAttachment) return
 
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
@@ -239,8 +193,9 @@ export function ChatWindow({
         isRead: false,
         readAt: null,
         createdAt: new Date().toISOString(),
-        attachmentUrl: undefined,
-        attachmentMetadata: hasAttachment ? attachment.metadata : null,
+        // ── FIX: use local blob URL so photo is visible immediately ──
+        attachmentUrl: attachment?.localPreviewUrl || null,
+        attachmentMetadata: hasAttachment ? attachment!.metadata : null,
         sender: { id: currentUserId, name: null },
       }
 
@@ -253,8 +208,8 @@ export function ChatWindow({
         const body: Record<string, unknown> = {}
         if (hasContent) body.content = content
         if (hasAttachment) {
-          body.attachmentPath = attachment.path
-          body.attachmentMetadata = attachment.metadata
+          body.attachmentPath = attachment!.path
+          body.attachmentMetadata = attachment!.metadata
         }
 
         const res = await fetch(`/api/messages/${propertyId}`, {
@@ -273,6 +228,12 @@ export function ChatWindow({
 
         const newMessage = await res.json()
         pendingMessages.current.delete(tempId)
+
+        // Revoke blob URL to free memory
+        if (attachment?.localPreviewUrl) {
+          URL.revokeObjectURL(attachment.localPreviewUrl)
+        }
+
         setMessages((prev) => prev.map((m) => (m.id === tempId ? newMessage : m)))
       } catch (error) {
         pendingMessages.current.delete(tempId)
@@ -285,7 +246,6 @@ export function ChatWindow({
 
   const groupMessagesByDate = (messages: Message[]) => {
     const groups: { date: Date; messages: Message[] }[] = []
-
     messages.forEach((message) => {
       const messageDate = new Date(message.createdAt)
       const dateKey = messageDate.toDateString()
@@ -296,7 +256,6 @@ export function ChatWindow({
         groups.push({ date: messageDate, messages: [message] })
       }
     })
-
     return groups
   }
 
@@ -337,11 +296,9 @@ export function ChatWindow({
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </Link>
         )}
-
         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
           <User className="h-5 w-5 text-blue-600" />
         </div>
-
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">
             {chatPartner?.name || t.messages.title}
@@ -366,20 +323,20 @@ export function ChatWindow({
             <p className="text-gray-400 text-sm">{t.messages.noChatsDesc}</p>
           </div>
         ) : (
-          messageGroups.map((group) => (
-            <div key={group.date.toISOString()}>
+          messageGroups.map((group, groupIndex) => (
+            <div key={groupIndex}>
               <DateSeparator date={group.date} />
-              {group.messages.map((msg) => (
+              {group.messages.map((message) => (
                 <MessageBubble
-                  key={msg.id}
-                  content={msg.content}
-                  createdAt={msg.createdAt}
-                  isOwn={msg.senderId === currentUserId}
-                  isRead={msg.isRead}
-                  senderName={msg.sender?.name}
-                  attachmentUrl={msg.attachmentUrl}
-                  attachmentMetadata={msg.attachmentMetadata}
-                  issueRef={msg.issueRef}
+                  key={message.id}
+                  content={message.content}
+                  createdAt={message.createdAt}
+                  isFromMe={message.senderId === currentUserId}
+                  isRead={message.isRead}
+                  senderName={message.sender?.name}
+                  attachmentUrl={message.attachmentUrl}
+                  attachmentMetadata={message.attachmentMetadata}
+                  issueRef={message.issueRef}
                 />
               ))}
             </div>
@@ -391,7 +348,7 @@ export function ChatWindow({
       {/* Input */}
       <MessageInput
         onSend={handleSend}
-        disabled={!chatPartner}
+        disabled={!chatPartner?.id}
         propertyId={propertyId}
       />
     </div>

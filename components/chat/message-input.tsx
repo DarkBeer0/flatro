@@ -1,6 +1,17 @@
 // components/chat/message-input.tsx
-// UPDATED: Added image attachment support via ChatAttachmentInput
-// FIXED: All hardcoded Polish/Russian strings → i18n dictionary keys
+// ============================================================
+// FIX: Pass localPreviewUrl through AttachmentData
+// ============================================================
+// PROBLEM: When a user sent a photo, the upload happened
+//   correctly but the optimistic message had no image source —
+//   showing only a bare timestamp until the server responded.
+//
+// FIX: After upload completes we store the blob URL (already
+//   created for the preview) in `attachment.localPreviewUrl`.
+//   ChatWindow uses this as a temporary `attachmentUrl` in the
+//   optimistic message. The blob URL is revoked after the server
+//   response replaces the temp message.
+// ============================================================
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
@@ -8,9 +19,11 @@ import { Send, ImagePlus, Camera, X, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useLocale } from '@/lib/i18n/context'
 
+// UPDATED: localPreviewUrl added for instant photo preview
 interface AttachmentData {
   path: string
   metadata: { width: number; height: number; size: number; mime_type: string }
+  localPreviewUrl?: string
 }
 
 interface AttachmentPreview {
@@ -35,8 +48,6 @@ export function MessageInput({
 }: MessageInputProps) {
   const { t } = useLocale()
   const chatDict = (t as any).chat || {}
-
-  // Resolve placeholder: prop > dictionary > fallback
   const resolvedPlaceholder = placeholder || t.messages.typeMessage
 
   const [message, setMessage] = useState('')
@@ -51,7 +62,6 @@ export function MessageInput({
 
   const MAX_SIZE = 5 * 1024 * 1024 // 5MB
 
-  // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current
     if (textarea) {
@@ -60,9 +70,8 @@ export function MessageInput({
     }
   }, [message])
 
-  // Get image dimensions
-  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
-    return new Promise((resolve) => {
+  const getImageDimensions = (file: File): Promise<{ width: number; height: number }> =>
+    new Promise((resolve) => {
       const img = new Image()
       img.onload = () => {
         resolve({ width: img.naturalWidth, height: img.naturalHeight })
@@ -74,9 +83,7 @@ export function MessageInput({
       }
       img.src = URL.createObjectURL(file)
     })
-  }
 
-  // Handle file selection
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
@@ -84,24 +91,20 @@ export function MessageInput({
 
       setUploadError(null)
 
-      // Validate size
       if (file.size > MAX_SIZE) {
         setUploadError(chatDict.fileTooLarge || 'File is too large. Max 5 MB')
         return
       }
-
-      // Validate type
       if (!file.type.startsWith('image/')) {
         setUploadError(chatDict.onlyPhotos || 'Only photos are allowed')
         return
       }
 
-      // Get dimensions & show preview
       const dimensions = await getImageDimensions(file)
+      // Keep the previewUrl alive — we'll pass it to the optimistic message
       const previewUrl = URL.createObjectURL(file)
       setPreview({ file, previewUrl, ...dimensions })
 
-      // Upload immediately
       if (!propertyId) {
         setUploadError(chatDict.noPropertyId || 'Missing property ID')
         return
@@ -121,11 +124,13 @@ export function MessageInput({
 
         if (!res.ok) {
           const data = await res.json()
-          throw new Error(data.error || (chatDict.uploadError || 'Upload failed'))
+          throw new Error(data.error || chatDict.uploadError || 'Upload failed')
         }
 
         const data = await res.json()
 
+        // ── FIX: store localPreviewUrl so ChatWindow can show the
+        //   photo immediately in the optimistic message ──────────
         setAttachment({
           path: data.path,
           metadata: {
@@ -134,15 +139,19 @@ export function MessageInput({
             size: file.size,
             mime_type: file.type,
           },
+          localPreviewUrl: previewUrl, // blob URL kept alive until server responds
         })
       } catch (err) {
-        setUploadError(err instanceof Error ? err.message : (chatDict.uploadError || 'Upload failed'))
-        removePreview()
+        setUploadError(
+          err instanceof Error ? err.message : chatDict.uploadError || 'Upload failed'
+        )
+        // Clean up blob URL on failure
+        URL.revokeObjectURL(previewUrl)
+        setPreview(null)
       } finally {
         setUploading(false)
       }
 
-      // Reset input
       e.target.value = ''
     },
     [propertyId, chatDict]
@@ -160,16 +169,18 @@ export function MessageInput({
   const handleSubmit = () => {
     const trimmed = message.trim()
     const hasAttachment = !!attachment
-
     if (!trimmed && !hasAttachment) return
     if (disabled || uploading) return
 
     setMessage('')
     const currentAttachment = attachment
-    removePreview()
+    // Don't revoke previewUrl here — ChatWindow will revoke it after
+    // the server response replaces the optimistic message
+    setPreview(null)
+    setAttachment(null)
+    setUploadError(null)
 
     textareaRef.current?.focus()
-
     Promise.resolve(onSend(trimmed, currentAttachment || undefined)).catch((err) => {
       console.error('Failed to send message:', err)
     })
@@ -186,7 +197,6 @@ export function MessageInput({
 
   return (
     <div className="border-t bg-white p-3">
-      {/* Hidden file inputs */}
       <input
         ref={fileInputRef}
         type="file"
@@ -253,7 +263,6 @@ export function MessageInput({
 
       {/* Input row */}
       <div className="flex items-end gap-2">
-        {/* Attachment buttons */}
         {propertyId && !preview && (
           <div className="flex items-center gap-0.5 pb-1">
             <Button
@@ -279,7 +288,6 @@ export function MessageInput({
           </div>
         )}
 
-        {/* Text input */}
         <textarea
           ref={textareaRef}
           value={message}
@@ -294,7 +302,6 @@ export function MessageInput({
                      max-h-[120px] overflow-y-auto"
         />
 
-        {/* Send button */}
         <button
           onClick={handleSubmit}
           disabled={!canSend}
