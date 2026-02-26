@@ -1,10 +1,22 @@
 // components/chat/message-bubble.tsx
-// UPDATED: Supports image attachments, issue references, and image-only messages
+// ============================================================
+// FIX: Render fallback state when attachmentPath exists but
+//      attachmentUrl is null (signed URL failed or still loading)
+//
+// PROBLEM: Message with content=null + attachmentUrl=null renders
+//   as an invisible empty bubble — just a floating timestamp.
+//   This happens when:
+//   A) The storage bucket/policy blocks signed URL generation
+//   B) The message was sent before policies were applied
+//
+// FIX: When attachmentPath is known but URL is null, show a
+//   placeholder image icon with "Zdjęcie" label so the user
+//   sees *something* and the space isn't mysteriously blank.
+// ============================================================
 'use client'
 
-import { format, isToday, isYesterday } from 'date-fns'
-import { pl } from 'date-fns/locale'
-import { Check, CheckCheck, Image as ImageIcon, AlertTriangle } from 'lucide-react'
+import { format } from 'date-fns'
+import { Check, CheckCheck, Image as ImageIcon } from 'lucide-react'
 import { ImageLightbox } from '@/components/ui/image-lightbox'
 
 interface IssueRef {
@@ -21,6 +33,7 @@ interface MessageBubbleProps {
   isRead: boolean
   senderName?: string | null
   attachmentUrl?: string | null
+  attachmentPath?: string | null   // ← NEW: used to detect "has photo but no URL yet"
   attachmentMetadata?: {
     width?: number
     height?: number
@@ -46,6 +59,7 @@ export function MessageBubble({
   isRead,
   senderName,
   attachmentUrl,
+  attachmentPath,
   attachmentMetadata,
   issueRef,
   onIssueClick,
@@ -54,9 +68,17 @@ export function MessageBubble({
   const time = format(new Date(createdAt), 'HH:mm')
   const hasAttachment = !!attachmentUrl
   const hasContent = !!content?.trim()
+  // Message has a file saved but signed URL not yet available
+  const hasPendingAttachment = !attachmentUrl && !!attachmentPath
+
+  // If truly nothing to show (shouldn't happen in practice), skip rendering
+  if (!hasContent && !hasAttachment && !hasPendingAttachment && !issueRef) {
+    return null
+  }
+
   const isImageOnly = hasAttachment && !hasContent
 
-  // Calculate thumbnail dimensions (max 280px wide, maintain aspect ratio)
+  // Calculate thumbnail dimensions
   let thumbW = 280
   let thumbH = 200
   if (attachmentMetadata?.width && attachmentMetadata?.height) {
@@ -77,12 +99,8 @@ export function MessageBubble({
           isImageOnly ? '' : 'rounded-2xl px-4 py-2.5'
         } ${
           isOwn
-            ? isImageOnly
-              ? ''
-              : 'bg-blue-600 text-white rounded-br-md'
-            : isImageOnly
-            ? ''
-            : 'bg-gray-100 text-gray-900 rounded-bl-md'
+            ? isImageOnly ? '' : 'bg-blue-600 text-white rounded-br-md'
+            : isImageOnly ? '' : 'bg-gray-100 text-gray-900 rounded-bl-md'
         }`}
       >
         {/* Issue reference header */}
@@ -90,50 +108,69 @@ export function MessageBubble({
           <button
             onClick={() => onIssueClick?.(issueRef.id)}
             className={`flex items-center gap-1.5 text-xs mb-1.5 pb-1.5 border-b ${
-              isOwn
-                ? 'border-white/20 text-white/80 hover:text-white'
-                : 'border-gray-200 text-gray-500 hover:text-blue-600'
-            } transition-colors`}
+              isOwn ? 'border-white/30 text-white/70 hover:text-white' : 'border-gray-200 text-gray-500 hover:text-gray-700'
+            } w-full text-left`}
           >
-            <AlertTriangle className="h-3 w-3" />
-            <span>
-              Dotyczy zgłoszenia: {issueRef.title}
-            </span>
-            <span className={`${STATUS_LABELS[issueRef.status]?.color || ''} font-medium`}>
-              ({STATUS_LABELS[issueRef.status]?.label || issueRef.status})
+            <span className="truncate">{issueRef.title}</span>
+            <span className={`ml-auto shrink-0 ${STATUS_LABELS[issueRef.status]?.color}`}>
+              {STATUS_LABELS[issueRef.status]?.label}
             </span>
           </button>
         )}
 
-        {/* Image attachment */}
+        {/* Attachment image */}
         {hasAttachment && (
-          <div className={`${hasContent ? 'mb-2' : ''} ${isImageOnly ? 'rounded-2xl overflow-hidden' : 'rounded-lg overflow-hidden'}`}>
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{ width: thumbW, height: thumbH }}
+          >
             <ImageLightbox
               src={attachmentUrl!}
-              alt="Załącznik"
-              thumbnailClassName={`block`}
+              alt="Zdjęcie"
+              thumbnailClassName="w-full h-full"
             />
+          </div>
+        )}
+
+        {/* ── FIX: Pending attachment placeholder ─────────────── */}
+        {hasPendingAttachment && (
+          <div
+            className={`rounded-xl flex items-center justify-center gap-2 px-4 ${
+              isOwn ? 'bg-blue-500' : 'bg-gray-200'
+            }`}
+            style={{ width: thumbW, height: thumbH }}
+          >
+            <ImageIcon className={`h-8 w-8 ${isOwn ? 'text-white/60' : 'text-gray-400'}`} />
+            <span className={`text-sm ${isOwn ? 'text-white/70' : 'text-gray-500'}`}>
+              Zdjęcie
+            </span>
           </div>
         )}
 
         {/* Text content */}
         {hasContent && (
-          <p className="text-sm whitespace-pre-wrap break-words">{content}</p>
+          <p className={`text-sm whitespace-pre-wrap break-words ${
+            hasAttachment || hasPendingAttachment ? 'mt-1.5' : ''
+          }`}>
+            {content}
+          </p>
         )}
 
-        {/* Timestamp + read status */}
-        <div
-          className={`flex items-center justify-end gap-1 mt-1 ${
-            isOwn ? 'text-white/60' : 'text-gray-400'
-          }`}
-        >
-          <span className="text-[11px]">{time}</span>
+        {/* Timestamp + read indicator */}
+        <div className={`flex items-center gap-1 mt-1 ${
+          isOwn ? 'justify-end' : 'justify-start'
+        }`}>
+          <span className={`text-[10px] ${
+            isOwn
+              ? isImageOnly ? 'text-gray-500' : 'text-white/70'
+              : 'text-gray-400'
+          }`}>
+            {time}
+          </span>
           {isOwn && (
-            isRead ? (
-              <CheckCheck className="h-3.5 w-3.5" />
-            ) : (
-              <Check className="h-3.5 w-3.5" />
-            )
+            isRead
+              ? <CheckCheck className={`h-3 w-3 ${isImageOnly ? 'text-blue-500' : 'text-white/70'}`} />
+              : <Check className={`h-3 w-3 ${isImageOnly ? 'text-gray-400' : 'text-white/70'}`} />
           )}
         </div>
       </div>
@@ -141,27 +178,25 @@ export function MessageBubble({
   )
 }
 
-// Date separator
-interface DateSeparatorProps {
-  date: string | Date
-}
+// ─────────────────────────────────────────────────────────────
+export function DateSeparator({ date }: { date: Date }) {
+  const now = new Date()
+  const yesterday = new Date(now)
+  yesterday.setDate(yesterday.getDate() - 1)
 
-export function DateSeparator({ date }: DateSeparatorProps) {
-  const d = typeof date === 'string' ? new Date(date) : date
   let label: string
-
-  if (isToday(d)) {
+  if (date.toDateString() === now.toDateString()) {
     label = 'Dzisiaj'
-  } else if (isYesterday(d)) {
+  } else if (date.toDateString() === yesterday.toDateString()) {
     label = 'Wczoraj'
   } else {
-    label = format(d, 'd MMMM yyyy', { locale: pl })
+    label = date.toLocaleDateString('pl-PL', { day: 'numeric', month: 'long', year: 'numeric' })
   }
 
   return (
     <div className="flex items-center gap-3 my-4">
       <div className="flex-1 h-px bg-gray-200" />
-      <span className="text-xs text-gray-400 font-medium">{label}</span>
+      <span className="text-xs text-gray-400 font-medium shrink-0">{label}</span>
       <div className="flex-1 h-px bg-gray-200" />
     </div>
   )
