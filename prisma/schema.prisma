@@ -454,6 +454,7 @@ model Payment {
   rejectionReason String?
 
   stripePaymentId String?
+  paymentMethod   String?   // "STRIPE" | "MANUAL" | null (legacy)
 
   recurringGroupId String?           
   isRecurring      Boolean @default(false)

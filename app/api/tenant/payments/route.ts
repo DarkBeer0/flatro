@@ -1,13 +1,17 @@
 // app/api/tenant/payments/route.ts
+// GET /api/tenant/payments — получить платежи жильца
+// UPDATED: добавлен owner.stripeOnboarded для переключения между Stripe и IBAN
+
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createClient } from '@/lib/supabase/server'
 
-// GET /api/tenant/payments - получить платежи жильца
 export async function GET() {
   try {
     const supabase = await createClient()
-    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const {
+      data: { user: authUser },
+    } = await supabase.auth.getUser()
 
     if (!authUser) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -22,9 +26,10 @@ export async function GET() {
             bankName: true,
             iban: true,
             accountHolder: true,
-          }
-        }
-      }
+            stripeOnboarded: true, // ← NEW: для переключения UI
+          },
+        },
+      },
     })
 
     if (!tenant) {
@@ -33,17 +38,18 @@ export async function GET() {
 
     const payments = await prisma.payment.findMany({
       where: { tenantId: tenant.id },
-      orderBy: { dueDate: 'desc' }
+      orderBy: { dueDate: 'desc' },
     })
 
     // Добавляем реквизиты владельца к каждому платежу
-    const paymentsWithOwner = payments.map(payment => ({
+    const paymentsWithOwner = payments.map((payment) => ({
       ...payment,
       owner: {
         bankName: tenant.user.bankName,
         iban: tenant.user.iban,
         accountHolder: tenant.user.accountHolder,
-      }
+        stripeOnboarded: tenant.user.stripeOnboarded, // ← NEW
+      },
     }))
 
     return NextResponse.json(paymentsWithOwner)
