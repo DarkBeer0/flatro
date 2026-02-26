@@ -304,14 +304,14 @@ export default function BillingTab() {
                     ) : (
                       <p className="text-3xl font-extrabold text-gray-900">
                         {interval === 'yearly'
-                          ? `PLN${Math.round(price / 12)}`
-                          : `PLN${price}`}
+                          ? `${Math.round(price / 12)} zł`
+                          : `${price} zł`}
                         <span className="text-sm font-normal text-gray-400">/mies.</span>
                       </p>
                     )}
                     {interval === 'yearly' && price > 0 && (
                       <p className="text-xs text-green-600 mt-0.5">
-                        {price} PLN rozliczane rocznie
+                        {price} zł rozliczane rocznie
                       </p>
                     )}
                   </div>
