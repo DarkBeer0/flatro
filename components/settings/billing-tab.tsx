@@ -254,7 +254,7 @@ export default function BillingTab() {
                 }`}
               >
                 Rocznie
-                <span className="ml-1 text-xs text-green-600 font-semibold">-17%</span>
+                <span className="ml-1 text-xs text-green-600 font-semibold">-37%</span>
               </button>
             </div>
           </div>
@@ -267,7 +267,7 @@ export default function BillingTab() {
               const isCurrent = planKey === currentPlan
               const isLoading = checkoutLoading === planKey
               const price =
-                interval === 'yearly' ? cfg.yearlyPriceEUR : cfg.monthlyPriceEUR
+                interval === 'yearly' ? cfg.yearlyPricePLN : cfg.monthlyPricePLN
 
               return (
                 <div
@@ -304,14 +304,14 @@ export default function BillingTab() {
                     ) : (
                       <p className="text-3xl font-extrabold text-gray-900">
                         {interval === 'yearly'
-                          ? `€${Math.round(price / 12)}`
-                          : `€${price}`}
+                          ? `PLN${Math.round(price / 12)}`
+                          : `PLN${price}`}
                         <span className="text-sm font-normal text-gray-400">/mies.</span>
                       </p>
                     )}
                     {interval === 'yearly' && price > 0 && (
                       <p className="text-xs text-green-600 mt-0.5">
-                        €{price} rozliczane rocznie
+                        {price} PLN rozliczane rocznie
                       </p>
                     )}
                   </div>

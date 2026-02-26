@@ -1,16 +1,14 @@
 // lib/subscription.ts
 // Flatro — Subscription plan definitions and helpers (V8)
 
-// ─── Plan configuration ───────────────────────────────────────────
-
 export type SubscriptionPlan = 'FREE' | 'PRO' | 'BUSINESS'
 
 export interface PlanConfig {
   name: string
   description: string
-  maxProperties: number | null // null = unlimited
-  monthlyPriceEUR: number
-  yearlyPriceEUR: number
+  maxProperties: number | null
+  monthlyPricePLN: number
+  yearlyPricePLN: number
   stripePriceIdMonthly: string | null
   stripePriceIdYearly: string | null
   features: string[]
@@ -22,8 +20,8 @@ export const PLANS: Record<SubscriptionPlan, PlanConfig> = {
     name: 'Free',
     description: 'Dla właścicieli zaczynających',
     maxProperties: 3,
-    monthlyPriceEUR: 0,
-    yearlyPriceEUR: 0,
+    monthlyPricePLN: 0,
+    yearlyPricePLN: 0,
     stripePriceIdMonthly: null,
     stripePriceIdYearly: null,
     features: [
@@ -37,8 +35,8 @@ export const PLANS: Record<SubscriptionPlan, PlanConfig> = {
     name: 'Pro',
     description: 'Dla aktywnych właścicieli',
     maxProperties: 20,
-    monthlyPriceEUR: 19,
-    yearlyPriceEUR: 190,
+    monthlyPricePLN: 20,
+    yearlyPricePLN: 150,
     stripePriceIdMonthly: process.env.STRIPE_PRICE_PRO_MONTHLY ?? '',
     stripePriceIdYearly: process.env.STRIPE_PRICE_PRO_YEARLY ?? '',
     features: [
@@ -54,8 +52,8 @@ export const PLANS: Record<SubscriptionPlan, PlanConfig> = {
     name: 'Business',
     description: 'Dla firm i zarządców',
     maxProperties: null,
-    monthlyPriceEUR: 49,
-    yearlyPriceEUR: 490,
+    monthlyPricePLN: 35,
+    yearlyPricePLN: 300,
     stripePriceIdMonthly: process.env.STRIPE_PRICE_BUSINESS_MONTHLY ?? '',
     stripePriceIdYearly: process.env.STRIPE_PRICE_BUSINESS_YEARLY ?? '',
     features: [
@@ -68,27 +66,18 @@ export const PLANS: Record<SubscriptionPlan, PlanConfig> = {
   },
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────
-
-/** How many properties can this plan hold? null = unlimited */
 export function getPlanLimit(plan: SubscriptionPlan): number | null {
   return PLANS[plan].maxProperties
 }
 
-/** Check if adding one more property is allowed */
 export function canAddProperty(
   plan: SubscriptionPlan,
   currentCount: number
 ): { allowed: boolean; limit: number | null; current: number } {
   const limit = getPlanLimit(plan)
-  return {
-    allowed: limit === null || currentCount < limit,
-    limit,
-    current: currentCount,
-  }
+  return { allowed: limit === null || currentCount < limit, limit, current: currentCount }
 }
 
-/** Map Stripe price ID back to plan + interval */
 export function planFromPriceId(
   priceId: string
 ): { plan: SubscriptionPlan; interval: 'monthly' | 'yearly' } | null {
