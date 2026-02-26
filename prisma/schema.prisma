@@ -1,6 +1,6 @@
 // prisma/schema.prisma
 // Flatro — Полная актуальная схема БД
-// Обновлено: V9 — Contract Lifecycle (Protocol + ContractAnnex)
+// Обновлено: V10 — Billing Documents (Faktury / Rachunki / Noty obciążeniowe)
 
 generator client {
   provider = "prisma-client-js"
@@ -60,6 +60,7 @@ model User {
   subscriptionPlan     SubscriptionPlan @default(FREE)
   stripeCustomerId     String?          @unique
   stripeSubscriptionId String?
+
   properties Property[]
   tenants    Tenant[]   @relation("OwnerTenants")
   payments   Payment[]
@@ -81,6 +82,10 @@ model User {
   // V7: Настройки уведомлений и лог
   settings         UserSettings?
   notificationLogs NotificationLog[]
+
+  // V10: Billing Documents
+  ownedDocuments    BillingDocument[]  @relation("OwnerDocuments")
+  documentSequences DocumentSequence[]
 
   @@map("users")
 }
@@ -223,6 +228,9 @@ model Tenant {
   settlementShares SettlementShare[]
   ledgerEntries    TenantLedger[]
 
+  // V10: Billing Documents
+  billingDocuments BillingDocument[] @relation("TenantDocuments")
+
   @@index([email])
   @@index([userId, isActive])
   @@index([tenantUserId])
@@ -291,6 +299,9 @@ model Contract {
   // V9: Contract Lifecycle
   protocols Protocol[]
   annexes   ContractAnnex[]
+
+  // V10: Billing Documents
+  billingDocuments BillingDocument[]
 
   @@index([status, endDate])
   @@index([propertyId, status])
@@ -365,23 +376,13 @@ model Protocol {
   type       ProtocolType
   date       DateTime
 
-  // JSONB: Array of { meterId, meterNumber, meterType, value }
-  meterReadings Json @default("[]") @map("meter_readings")
-
-  // JSONB: Array of { type, count, description }
+  meterReadings  Json @default("[]") @map("meter_readings")
   keysHandedOver Json @default("[]") @map("keys_handed_over")
-
-  // JSONB: Array of { roomName, items: [{ name, condition, notes }] }
   roomsCondition Json @default("[]") @map("rooms_condition")
 
-  // Uwagi ogólne
   generalNotes String? @map("general_notes")
-
-  // JSONB: Array of { url, caption?, roomName? }
-  photos Json @default("[]")
-
-  // PDF file reference (Supabase storage path)
-  pdfUrl String? @map("pdf_url")
+  photos       Json    @default("[]")
+  pdfUrl       String? @map("pdf_url")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -415,20 +416,10 @@ model ContractAnnex {
   type          AnnexType
   status        AnnexStatus @default(DRAFT)
   effectiveDate DateTime    @map("effective_date")
-
-  // JSONB audit trail: depends on type
-  // RENT_CHANGE: { previousRent, newRent }
-  // EXTENSION:   { previousEndDate, newEndDate }
-  // OTHER:       {}
-  changes Json @default("{}")
-
-  // Free-text clause for OTHER or additional terms
-  customText String? @map("custom_text")
-
-  // PDF file reference
-  pdfUrl String? @map("pdf_url")
-
-  signedAt DateTime? @map("signed_at")
+  changes       Json        @default("{}")
+  customText    String?     @map("custom_text")
+  pdfUrl        String?     @map("pdf_url")
+  signedAt      DateTime?   @map("signed_at")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -523,12 +514,9 @@ model Message {
   readAt     DateTime?
   createdAt  DateTime  @default(now())
 
-  // V6: Вложения (фото в чате)
   attachmentPath     String?
   attachmentMetadata Json?
-
-  // V6: Ссылка на zgłoszenie
-  issueId String?
+  issueId            String?
 
   sender   User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
   receiver User     @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
@@ -542,7 +530,7 @@ model Message {
 }
 
 // ╔══════════════════════════════════════════════════════════════╗
-// ║  ЗАЯВКИ — legacy (Tickets)                                   ║
+// ║  ТИКЕТЫ (legacy)                                             ║
 // ╚══════════════════════════════════════════════════════════════╝
 
 model Ticket {
@@ -697,7 +685,6 @@ model Meter {
   archiveDate DateTime?
   archiveNote String?
 
-  // Meter exchange chain
   replacedById String? @unique
   replacedBy   Meter?  @relation("MeterReplacement", fields: [replacedById], references: [id])
   replaces     Meter?  @relation("MeterReplacement")
@@ -993,4 +980,104 @@ enum NotificationStatus {
   SENT
   FAILED
   SKIPPED
+}
+
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  V10: BILLING DOCUMENTS                                      ║
+// ║  Faktury / Rachunki / Noty obciążeniowe                      ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+enum BillingDocumentType {
+  FAKTURA_VAT          // Faktura z VAT
+  FAKTURA_BEZ_VAT      // Faktura zwolniona z VAT (art. 43 ust. 1 pkt 36)
+  RACHUNEK             // Rachunek (os. fizyczne)
+  NOTA_OBCIAZENIOWA    // Nota obciążeniowa (przelew kosztów mediów)
+}
+
+enum BillingDocumentStatus {
+  DRAFT      // Szkic — edytowalny
+  ISSUED     // Wystawiony — niezmienialny
+  PAID       // Zapłacony
+  CANCELLED  // Anulowany
+}
+
+enum NumberingCycle {
+  MONTHLY  // FV/2026/05/001
+  YEARLY   // FV/2026/001
+}
+
+// ─── DocumentSequence ────────────────────────────────────────
+// Atomic counter per (owner × type × year × month).
+// Incremented via raw SQL INSERT … ON CONFLICT DO UPDATE RETURNING
+// to prevent duplicate numbers under concurrent requests.
+
+model DocumentSequence {
+  id      String              @id @default(uuid())
+  ownerId String              @map("owner_id")
+  docType BillingDocumentType @map("doc_type")
+  cycle   NumberingCycle      @default(MONTHLY)
+  year    Int
+  month   Int?                // NULL when cycle = YEARLY
+
+  lastSeq Int @default(0) @map("last_seq")
+
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, docType, year, month])
+  @@index([ownerId, docType])
+  @@map("document_sequences")
+}
+
+// ─── BillingDocument ─────────────────────────────────────────
+
+model BillingDocument {
+  id         String  @id @default(uuid())
+  ownerId    String  @map("owner_id")
+  tenantId   String  @map("tenant_id")
+  contractId String? @map("contract_id")
+
+  type   BillingDocumentType
+  number String              // e.g. "FV/2026/05/001"
+
+  // Polish tax law: both dates are mandatory on invoices
+  issueDate DateTime @map("issue_date") // Data wystawienia
+  saleDate  DateTime @map("sale_date")  // Data sprzedaży / wykonania usługi
+  dueDate   DateTime @map("due_date")   // Termin płatności
+
+  // Line items — JSONB array
+  // Each: { id, description, netAmount, vatRate, grossAmount }
+  // vatRate: 0.23 | 0.08 | 0.05 | 0.00 | "zw." | "np."
+  items Json @default("[]")
+
+  // Denormalised totals (fast queries / PDF)
+  totalNet   Float @default(0) @map("total_net")
+  totalVat   Float @default(0) @map("total_vat")
+  totalGross Float @default(0) @map("total_gross")
+
+  status  BillingDocumentStatus @default(DRAFT)
+  remarks String?               // e.g. VAT exemption basis
+
+  // Immutable party snapshots captured at issue time
+  // sellerSnapshot: { name, address, nip?, pesel?, iban?, bankName?, accountHolder? }
+  // buyerSnapshot:  { name, address, nip?, pesel? }
+  sellerSnapshot Json @map("seller_snapshot")
+  buyerSnapshot  Json @map("buyer_snapshot")
+
+  pdfUrl String? @map("pdf_url") // Supabase storage path
+
+  issuedAt    DateTime? @map("issued_at")
+  paidAt      DateTime? @map("paid_at")
+  cancelledAt DateTime? @map("cancelled_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt      @map("updated_at")
+
+  owner    User      @relation("OwnerDocuments",  fields: [ownerId],    references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation("TenantDocuments", fields: [tenantId],   references: [id], onDelete: Cascade)
+  contract Contract? @relation(fields: [contractId], references: [id],  onDelete: SetNull)
+
+  @@unique([ownerId, number])
+  @@index([ownerId, status])
+  @@index([tenantId, status])
+  @@index([ownerId, type, issueDate(sort: Desc)])
+  @@map("billing_documents")
 }
