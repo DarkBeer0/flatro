@@ -455,6 +455,10 @@ model Payment {
 
   stripePaymentId String?
 
+  recurringGroupId String?           
+  isRecurring      Boolean @default(false)
+  recurringIndex   Int?              
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -464,6 +468,7 @@ model Payment {
   @@index([status, dueDate])
   @@index([tenantId, status])
   @@index([userId, createdAt])
+  @@index([recurringGroupId])
   @@map("payments")
 }
 
