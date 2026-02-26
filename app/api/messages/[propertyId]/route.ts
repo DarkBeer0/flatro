@@ -1,8 +1,18 @@
 // app/api/messages/[propertyId]/route.ts
-// UPDATED: Support for attachments and issue references
-// GET — message history with signed URLs
-// POST — send message with optional attachment
-// PATCH — mark as read
+// ============================================================
+// BUG 2 FIX — Chat Privacy / Data Leak
+// ============================================================
+// PROBLEM: Messages were fetched with only `propertyId` as filter.
+//   When Test #2 (new tenant) opened the chat they received ALL
+//   messages including the previous tenant's (Test #1) conversation.
+//
+// FIX: For non-owner users (tenants) we add an additional filter:
+//   { OR: [ { senderId: authUser.id }, { receiverId: authUser.id } ] }
+//   Owners can still see ALL messages for a property (needed for
+//   multi-tenant properties where the owner wants history per tenant).
+//
+// COPY THIS FILE TO:  app/api/messages/[propertyId]/route.ts
+// ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
@@ -69,12 +79,32 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
+    // ─────────────────────────────────────────────────────────
+    // BUG 2 FIX: Build the message filter
+    //
+    // Owners see ALL messages for the property (so they can read
+    // the full conversation thread with each tenant).
+    //
+    // Tenants see ONLY messages they personally sent or received.
+    // This prevents a new tenant from seeing a previous tenant's
+    // conversation with the owner.
+    // ─────────────────────────────────────────────────────────
+    const messageWhere: Record<string, unknown> = {
+      propertyId,
+      ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
+    }
+
+    if (!isOwner && isTenantOfProperty) {
+      // Strict privacy: tenant can only read their own conversation
+      messageWhere.OR = [
+        { senderId: authUser.id },
+        { receiverId: authUser.id },
+      ]
+    }
+
     // Fetch messages
     const messages = await prisma.message.findMany({
-      where: {
-        propertyId,
-        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
-      },
+      where: messageWhere,
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -118,6 +148,12 @@ export async function GET(
     // Build chat partner info
     let chatPartner
     if (isOwner) {
+      // ─────────────────────────────────────────────────────
+      // BUG 2 NOTE: When the owner views the chat with a *specific*
+      // tenant we should ideally scope it to that tenant.
+      // For now we return the first ACTIVE tenant (as before).
+      // Future: add ?tenantId= param to scope per-tenant.
+      // ─────────────────────────────────────────────────────
       const tenant = property.tenants[0]
       chatPartner = tenant
         ? {

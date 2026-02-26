@@ -1,11 +1,18 @@
 // components/chat/use-realtime-messages.ts
+// ============================================================
+// FIX: table name corrected from 'Message' → 'messages'
+// 
+// Prisma model is named `Message` in schema.prisma,
+// but @@map("messages") means the actual PostgreSQL table
+// is lowercase "messages". Supabase Realtime uses the real
+// DB table name, not the Prisma model name.
+// ============================================================
 'use client'
 
 import { useEffect, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { RealtimeChannel } from '@supabase/supabase-js'
 
-// Тип сообщения из БД (без join'ов)
 interface RealtimeMessage {
   id: string
   senderId: string
@@ -48,10 +55,8 @@ export function useRealtimeMessages({
     }
 
     const supabase = supabaseRef.current
-
-    // Создаём канал с уникальным именем
     const channelName = `messages:${propertyId}`
-    
+
     const channel = supabase
       .channel(channelName)
       .on(
@@ -59,13 +64,11 @@ export function useRealtimeMessages({
         {
           event: 'INSERT',
           schema: 'public',
-          table: 'Message',
+          table: 'messages', // ← FIXED: was 'Message' (Prisma model name)
           filter: `propertyId=eq.${propertyId}`,
         },
         (payload) => {
           const newMessage = payload.new as RealtimeMessage
-          
-          // Не добавляем своё сообщение (оно уже добавлено через optimistic update)
           if (newMessage.senderId !== currentUserId) {
             onNewMessage(newMessage)
           }
@@ -76,7 +79,7 @@ export function useRealtimeMessages({
         {
           event: 'UPDATE',
           schema: 'public',
-          table: 'Message',
+          table: 'messages', // ← FIXED: was 'Message'
           filter: `propertyId=eq.${propertyId}`,
         },
         (payload) => {

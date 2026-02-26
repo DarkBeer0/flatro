@@ -1,12 +1,29 @@
 // components/chat/chat-window.tsx
-// UPDATED: Added attachment support for sending images in chat
-// FIXED: All hardcoded Russian strings → i18n dictionary keys
+// ============================================================
+// BUG 1 FIX — Lack of Real-time Reactivity
+// ============================================================
+// PROBLEM: The ChatWindow only used polling (setInterval every 5 s).
+//   The `useRealtimeMessages` hook existed but was NEVER imported or
+//   used here. Both the Owner and Tenant had to wait for the next
+//   polling tick (up to 5 s) to see a new message.
+//
+// FIX: Import and wire up `useRealtimeMessages`. The hook subscribes
+//   to Supabase `postgres_changes` on the `Message` table filtered by
+//   `propertyId`. New messages now arrive instantly via WebSocket.
+//   Polling is kept as a safety net (30 s instead of 5 s) in case
+//   the WebSocket connection is unavailable.
+//
+// PREREQUISITE (Supabase Dashboard — one-time setup):
+//   Run the SQL in fix-bug1--supabase-realtime.sql in the
+//   Supabase SQL Editor to enable replication on the Message table.
+// ============================================================
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, MessageSquare, ArrowLeft, User } from 'lucide-react'
 import { MessageBubble, DateSeparator } from './message-bubble'
 import { MessageInput } from './message-input'
+import { useRealtimeMessages } from './use-realtime-messages'
 import Link from 'next/link'
 import { useLocale } from '@/lib/i18n/context'
 
@@ -57,6 +74,11 @@ interface ChatWindowProps {
   propertyId: string
   backLink?: string
   backLabel?: string
+  /**
+   * Fallback polling interval in ms.
+   * Realtime WebSocket is primary; polling is a safety net.
+   * Default: 30 000 ms (was 5 000 ms before this fix).
+   */
   pollingInterval?: number
 }
 
@@ -64,12 +86,11 @@ export function ChatWindow({
   propertyId,
   backLink,
   backLabel,
-  pollingInterval = 5000,
+  pollingInterval = 30_000, // reduced frequency — realtime handles instant updates
 }: ChatWindowProps) {
   const { t } = useLocale()
   const chatDict = (t as any).chat || {}
 
-  // Resolve backLabel: prop > dictionary > fallback
   const resolvedBackLabel = backLabel || t.common.back
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -78,11 +99,10 @@ export function ChatWindow({
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const shouldScrollToBottom = useRef(true)
-  
   const pendingMessages = useRef<Set<string>>(new Set())
 
   const scrollToBottom = useCallback((force = false) => {
@@ -92,40 +112,43 @@ export function ChatWindow({
   }, [])
 
   const updateMessages = useCallback((serverMessages: Message[]) => {
-    setMessages(prev => {
-      const tempMessages = prev.filter(m => 
-        m.id.startsWith('temp-') && pendingMessages.current.has(m.id)
+    setMessages((prev) => {
+      const tempMessages = prev.filter(
+        (m) => m.id.startsWith('temp-') && pendingMessages.current.has(m.id)
       )
-      const serverIds = new Set(serverMessages.map(m => m.id))
-      const uniqueTemp = tempMessages.filter(m => !serverIds.has(m.id))
+      const serverIds = new Set(serverMessages.map((m) => m.id))
+      const uniqueTemp = tempMessages.filter((m) => !serverIds.has(m.id))
       return [...serverMessages, ...uniqueTemp]
     })
   }, [])
 
-  const fetchMessages = useCallback(async (isInitial = false) => {
-    try {
-      const res = await fetch(`/api/messages/${propertyId}`)
-      if (!res.ok) throw new Error(chatDict.loadError || 'Failed to load messages')
-      
-      const data = await res.json()
+  const fetchMessages = useCallback(
+    async (isInitial = false) => {
+      try {
+        const res = await fetch(`/api/messages/${propertyId}`)
+        if (!res.ok) throw new Error(chatDict.loadError || 'Failed to load messages')
 
-      if (data.property) setProperty(data.property)
-      if (data.chatPartner) setChatPartner(data.chatPartner)
-      if (data.currentUserId) setCurrentUserId(data.currentUserId)
+        const data = await res.json()
 
-      updateMessages(data.messages || [])
+        if (data.property) setProperty(data.property)
+        if (data.chatPartner) setChatPartner(data.chatPartner)
+        if (data.currentUserId) setCurrentUserId(data.currentUserId)
 
-      if (isInitial) {
-        setLoading(false)
-        setTimeout(() => scrollToBottom(true), 100)
+        updateMessages(data.messages || [])
+
+        if (isInitial) {
+          setLoading(false)
+          setTimeout(() => scrollToBottom(true), 100)
+        }
+      } catch (err) {
+        if (isInitial) {
+          setError(err instanceof Error ? err.message : chatDict.loadError || 'Error')
+          setLoading(false)
+        }
       }
-    } catch (err) {
-      if (isInitial) {
-        setError(err instanceof Error ? err.message : (chatDict.loadError || 'Error'))
-        setLoading(false)
-      }
-    }
-  }, [propertyId, scrollToBottom, updateMessages, chatDict.loadError])
+    },
+    [propertyId, scrollToBottom, updateMessages, chatDict.loadError]
+  )
 
   const markAsRead = useCallback(async () => {
     try {
@@ -135,11 +158,44 @@ export function ChatWindow({
     }
   }, [propertyId])
 
+  // Initial load
   useEffect(() => {
     fetchMessages(true)
     markAsRead()
   }, [fetchMessages, markAsRead])
 
+  // ─────────────────────────────────────────────────────────
+  // BUG 1 FIX: Supabase Realtime subscription
+  //
+  // When the OTHER party sends a message the hook fires
+  // `onNewMessage` immediately via WebSocket — no polling delay.
+  // ─────────────────────────────────────────────────────────
+  useRealtimeMessages({
+    propertyId,
+    currentUserId,
+    enabled: !loading && !!currentUserId,
+
+    onNewMessage: useCallback(
+      (realtimeMsg) => {
+        // A new message arrived from the other party.
+        // Re-fetch so we get the full payload (signedUrls, senderName, etc.)
+        fetchMessages()
+        markAsRead()
+        shouldScrollToBottom.current = true
+      },
+      [fetchMessages, markAsRead]
+    ),
+
+    onMessageUpdated: useCallback(
+      (realtimeMsg) => {
+        // e.g. isRead flipped to true — re-fetch to sync read receipts
+        fetchMessages()
+      },
+      [fetchMessages]
+    ),
+  })
+
+  // Fallback polling (safety net for environments where WebSocket is blocked)
   useEffect(() => {
     const interval = setInterval(() => {
       fetchMessages()
@@ -165,80 +221,82 @@ export function ChatWindow({
     scrollToBottom()
   }, [messages, scrollToBottom])
 
-  const handleSend = useCallback(async (content: string, attachment?: AttachmentData) => {
-    if (!currentUserId) return
+  const handleSend = useCallback(
+    async (content: string, attachment?: AttachmentData) => {
+      if (!currentUserId) return
 
-    const hasContent = !!content.trim()
-    const hasAttachment = !!attachment
+      const hasContent = !!content.trim()
+      const hasAttachment = !!attachment
 
-    if (!hasContent && !hasAttachment) return
+      if (!hasContent && !hasAttachment) return
 
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-    const tempMessage: Message = {
-      id: tempId,
-      senderId: currentUserId,
-      receiverId: chatPartner?.id || '',
-      content: hasContent ? content : null,
-      isRead: false,
-      readAt: null,
-      createdAt: new Date().toISOString(),
-      attachmentUrl: undefined,
-      attachmentMetadata: hasAttachment ? attachment.metadata : null,
-      sender: { id: currentUserId, name: null }
-    }
-    
-    pendingMessages.current.add(tempId)
-    setMessages(prev => [...prev, tempMessage])
-    shouldScrollToBottom.current = true
-    scrollToBottom(true)
-
-    try {
-      const body: Record<string, unknown> = {}
-      if (hasContent) body.content = content
-      if (hasAttachment) {
-        body.attachmentPath = attachment.path
-        body.attachmentMetadata = attachment.metadata
+      const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const tempMessage: Message = {
+        id: tempId,
+        senderId: currentUserId,
+        receiverId: chatPartner?.id || '',
+        content: hasContent ? content : null,
+        isRead: false,
+        readAt: null,
+        createdAt: new Date().toISOString(),
+        attachmentUrl: undefined,
+        attachmentMetadata: hasAttachment ? attachment.metadata : null,
+        sender: { id: currentUserId, name: null },
       }
 
-      const res = await fetch(`/api/messages/${propertyId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
+      pendingMessages.current.add(tempId)
+      setMessages((prev) => [...prev, tempMessage])
+      shouldScrollToBottom.current = true
+      scrollToBottom(true)
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}))
-        console.error('Failed to send message:', errorData)
+      try {
+        const body: Record<string, unknown> = {}
+        if (hasContent) body.content = content
+        if (hasAttachment) {
+          body.attachmentPath = attachment.path
+          body.attachmentMetadata = attachment.metadata
+        }
+
+        const res = await fetch(`/api/messages/${propertyId}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}))
+          console.error('Failed to send message:', errorData)
+          pendingMessages.current.delete(tempId)
+          setMessages((prev) => prev.filter((m) => m.id !== tempId))
+          return
+        }
+
+        const newMessage = await res.json()
         pendingMessages.current.delete(tempId)
-        setMessages(prev => prev.filter(m => m.id !== tempId))
-        return
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? newMessage : m)))
+      } catch (error) {
+        pendingMessages.current.delete(tempId)
+        setMessages((prev) => prev.filter((m) => m.id !== tempId))
+        console.error('Network error:', error)
       }
-      const newMessage = await res.json()
-      pendingMessages.current.delete(tempId)
-      setMessages(prev => prev.map(m => m.id === tempId ? newMessage : m))
-      
-    } catch (error) {
-      pendingMessages.current.delete(tempId)
-      setMessages(prev => prev.filter(m => m.id !== tempId))
-      console.error('Network error:', error)
-    }
-  }, [currentUserId, chatPartner?.id, propertyId, scrollToBottom])
+    },
+    [currentUserId, chatPartner?.id, propertyId, scrollToBottom]
+  )
 
   const groupMessagesByDate = (messages: Message[]) => {
     const groups: { date: Date; messages: Message[] }[] = []
-    
-    messages.forEach(message => {
+
+    messages.forEach((message) => {
       const messageDate = new Date(message.createdAt)
       const dateKey = messageDate.toDateString()
-      
-      const existingGroup = groups.find(g => g.date.toDateString() === dateKey)
+      const existingGroup = groups.find((g) => g.date.toDateString() === dateKey)
       if (existingGroup) {
         existingGroup.messages.push(message)
       } else {
         groups.push({ date: messageDate, messages: [message] })
       }
     })
-    
+
     return groups
   }
 
@@ -279,11 +337,11 @@ export function ChatWindow({
             <ArrowLeft className="h-5 w-5 text-gray-600" />
           </Link>
         )}
-        
+
         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
           <User className="h-5 w-5 text-blue-600" />
         </div>
-        
+
         <div className="flex-1 min-w-0">
           <h3 className="font-semibold text-gray-900 truncate">
             {chatPartner?.name || t.messages.title}
@@ -304,29 +362,24 @@ export function ChatWindow({
       >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
-            <MessageSquare className="h-12 w-12 text-gray-300 mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              {t.messages.noChats}
-            </h3>
-            <p className="text-gray-500 text-sm max-w-sm">
-              {t.messages.clickToChat}
-            </p>
+            <MessageSquare className="h-12 w-12 text-gray-200 mb-3" />
+            <p className="text-gray-400 text-sm">{t.messages.noChatsDesc}</p>
           </div>
         ) : (
-          messageGroups.map((group, groupIndex) => (
-            <div key={groupIndex}>
+          messageGroups.map((group) => (
+            <div key={group.date.toISOString()}>
               <DateSeparator date={group.date} />
-              {group.messages.map((message) => (
+              {group.messages.map((msg) => (
                 <MessageBubble
-                  key={message.id}
-                  content={message.content}
-                  createdAt={message.createdAt}
-                  isFromMe={message.senderId === currentUserId}
-                  isRead={message.isRead}
-                  senderName={message.sender.name}
-                  attachmentUrl={message.attachmentUrl}
-                  attachmentMetadata={message.attachmentMetadata}
-                  issueRef={message.issueRef}
+                  key={msg.id}
+                  content={msg.content}
+                  createdAt={msg.createdAt}
+                  isOwn={msg.senderId === currentUserId}
+                  isRead={msg.isRead}
+                  senderName={msg.sender?.name}
+                  attachmentUrl={msg.attachmentUrl}
+                  attachmentMetadata={msg.attachmentMetadata}
+                  issueRef={msg.issueRef}
                 />
               ))}
             </div>
@@ -338,7 +391,7 @@ export function ChatWindow({
       {/* Input */}
       <MessageInput
         onSend={handleSend}
-        disabled={!chatPartner?.id}
+        disabled={!chatPartner}
         propertyId={propertyId}
       />
     </div>
