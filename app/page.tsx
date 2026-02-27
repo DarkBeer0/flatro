@@ -86,7 +86,7 @@ export default function LandingPage() {
 
             <p className="mt-6 text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
               Flatro — платформа для арендодателей в Польше. Недвижимость, арендаторы, платежи,
-              договоры и счета за медиа — всё в одном месте. Экономьте до 5 часов в неделю.
+              договоры и счета за медиа — всё в одном месте.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
