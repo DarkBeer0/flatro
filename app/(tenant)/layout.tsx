@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, Users, CreditCard, MessageSquare, AlertTriangle, Settings, Building2,
-     Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft, Wallet, SquareStack, Receipt }
+     Menu, X, LogOut, Loader2, Gauge, FileText, ArrowRightLeft, Wallet, SquareStack, Receipt, BarChart2  }
       from 'lucide-react'
 import { useLocale } from '@/lib/i18n/context'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -73,6 +73,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
     { href: '/messages', icon: MessageSquare, label: t.nav?.messages || 'Сообщения' },
     { href: '/issues', icon: AlertTriangle, label: 'Zgłoszenia' },
     { href: '/billing',    icon: Receipt,      label: 'Faktury' },
+    { href: '/analytics', icon: BarChart2, label: 'Analityka' },
   ]
 
   const tenantNavItems = [

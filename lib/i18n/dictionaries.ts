@@ -303,6 +303,30 @@ export interface Dictionary {
     sending: string
     checkSpam: string
   }
+  analytics: {
+    title: string
+    subtitle: string
+    revenueYear: string
+    avgMonthly: string
+    onTime: string
+    onTimeSub: string
+    topProperty: string
+    revenueByMonth: string
+    noRevenueData: string
+    revenueByProperty: string
+    paymentStatuses: string
+    fetchError: string
+    loadError: string
+    pieces: string        // '{count} szt.' — шаблон, подставлять число в коде
+    status: {
+      paid: string
+      pending: string
+      overdue: string
+      pendingConfirmation: string
+      rejected: string
+      cancelled: string
+    }
+  }
 }
 
 export function getDictionary(locale: Locale): Dictionary {
@@ -594,7 +618,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Повторить через {time}',
       sending: 'Отправка...',
       checkSpam: 'Проверьте папку «Спам», если письмо не пришло',
-    }
+    },
+    analytics: {
+      title: 'Финансовая аналитика',
+      subtitle: 'Последние 12 месяцев · данные из платежей',
+      revenueYear: 'Доход за текущий год',
+      avgMonthly: 'Средний доход / месяц',
+      onTime: 'Платежи вовремя',
+      onTimeSub: 'из оплаченных',
+      topProperty: 'Самый доходный объект',
+      revenueByMonth: 'Доход по месяцам',
+      noRevenueData: 'Нет данных о доходах',
+      revenueByProperty: 'Доход по объектам',
+      paymentStatuses: 'Статусы платежей',
+      fetchError: 'Ошибка загрузки данных',
+      loadError: 'Ошибка загрузки данных',
+      pieces: 'шт.',
+      status: {
+        paid: 'Оплачено',
+        pending: 'Ожидает',
+        overdue: 'Просрочено',
+        pendingConfirmation: 'На подтверждении',
+        rejected: 'Отклонено',
+        cancelled: 'Отменено',
+      },
+    },
   },
 
   // POLISH
@@ -880,7 +928,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Wyślij ponownie za {time}',
       sending: 'Wysyłanie...',
       checkSpam: 'Sprawdź folder spam, jeśli nie widzisz wiadomości',
-    }
+    },
+    analytics: {
+      title: 'Analityka finansowa',
+      subtitle: 'Ostatnie 12 miesięcy · dane z płatności',
+      revenueYear: 'Przychód w tym roku',
+      avgMonthly: 'Średni przychód / miesiąc',
+      onTime: 'Płatności na czas',
+      onTimeSub: 'spośród opłaconych',
+      topProperty: 'Najbardziej dochodowy obiekt',
+      revenueByMonth: 'Przychód miesięczny',
+      noRevenueData: 'Brak danych o przychodach',
+      revenueByProperty: 'Przychód wg obiektu',
+      paymentStatuses: 'Statusy płatności',
+      fetchError: 'Błąd pobierania danych',
+      loadError: 'Błąd ładowania danych',
+      pieces: 'szt.',
+      status: {
+        paid: 'Zapłacone',
+        pending: 'Oczekujące',
+        overdue: 'Zaległe',
+        pendingConfirmation: 'Do potwierdzenia',
+        rejected: 'Odrzucone',
+        cancelled: 'Anulowane',
+      },
+    },
   },
 
   // ENGLISH
@@ -1166,7 +1238,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Resend in {time}',
       sending: 'Sending...',
       checkSpam: "Check your spam folder if you don't see the email",
-    }
+    },
+    analytics: {
+      title: 'Financial Analytics',
+      subtitle: 'Last 12 months · payment data',
+      revenueYear: 'Revenue this year',
+      avgMonthly: 'Average revenue / month',
+      onTime: 'On-time payments',
+      onTimeSub: 'of paid',
+      topProperty: 'Most profitable property',
+      revenueByMonth: 'Monthly revenue',
+      noRevenueData: 'No revenue data',
+      revenueByProperty: 'Revenue by property',
+      paymentStatuses: 'Payment statuses',
+      fetchError: 'Error fetching data',
+      loadError: 'Error loading data',
+      pieces: 'pcs.',
+      status: {
+        paid: 'Paid',
+        pending: 'Pending',
+        overdue: 'Overdue',
+        pendingConfirmation: 'Awaiting confirmation',
+        rejected: 'Rejected',
+        cancelled: 'Cancelled',
+      },
+    },
   },
 
   // GERMAN
@@ -1452,7 +1548,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Erneut senden in {time}',
       sending: 'Wird gesendet...',
       checkSpam: 'Überprüfen Sie Ihren Spam-Ordner, falls die E-Mail nicht ankommt',
-    }
+    },
+    analytics: {
+      title: 'Finanzanalyse',
+      subtitle: 'Letzte 12 Monate · Zahlungsdaten',
+      revenueYear: 'Einnahmen in diesem Jahr',
+      avgMonthly: 'Durchschnittliche Einnahmen / Monat',
+      onTime: 'Pünktliche Zahlungen',
+      onTimeSub: 'der bezahlten',
+      topProperty: 'Ertragreichste Immobilie',
+      revenueByMonth: 'Monatliche Einnahmen',
+      noRevenueData: 'Keine Einnahmedaten',
+      revenueByProperty: 'Einnahmen nach Objekt',
+      paymentStatuses: 'Zahlungsstatus',
+      fetchError: 'Fehler beim Laden der Daten',
+      loadError: 'Fehler beim Laden der Daten',
+      pieces: 'Stk.',
+      status: {
+        paid: 'Bezahlt',
+        pending: 'Ausstehend',
+        overdue: 'Überfällig',
+        pendingConfirmation: 'Wartet auf Bestätigung',
+        rejected: 'Abgelehnt',
+        cancelled: 'Storniert',
+      },
+    },
   },
 
   // UKRAINIAN
@@ -1738,7 +1858,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Повторити через {time}',
       sending: 'Надсилання...',
       checkSpam: 'Перевірте папку «Спам», якщо лист не прийшов',
-    }
+    },
+    analytics: {
+      title: 'Фінансова аналітика',
+      subtitle: 'Останні 12 місяців · дані з платежів',
+      revenueYear: 'Дохід у поточному році',
+      avgMonthly: 'Середній дохід / місяць',
+      onTime: 'Платежі вчасно',
+      onTimeSub: 'із оплачених',
+      topProperty: 'Найдохідніший об\'єкт',
+      revenueByMonth: 'Дохід по місяцях',
+      noRevenueData: 'Немає даних про доходи',
+      revenueByProperty: 'Дохід за об\'єктами',
+      paymentStatuses: 'Статуси платежів',
+      fetchError: 'Помилка завантаження даних',
+      loadError: 'Помилка завантаження даних',
+      pieces: 'шт.',
+      status: {
+        paid: 'Сплачено',
+        pending: 'Очікує',
+        overdue: 'Прострочено',
+        pendingConfirmation: 'На підтвердженні',
+        rejected: 'Відхилено',
+        cancelled: 'Скасовано',
+      },
+    },
   },
 
   // CZECH
@@ -2024,6 +2168,30 @@ export const dictionaries: Record<Locale, Dictionary> = {
       resendIn: 'Odeslat znovu za {time}',
       sending: 'Odesílání...',
       checkSpam: 'Zkontrolujte složku se spamem, pokud e-mail nevidíte',
-    }
+    },
+    analytics: {
+      title: 'Finanční analytika',
+      subtitle: 'Posledních 12 měsíců · data z plateb',
+      revenueYear: 'Příjmy v tomto roce',
+      avgMonthly: 'Průměrné příjmy / měsíc',
+      onTime: 'Platby včas',
+      onTimeSub: 'z zaplacených',
+      topProperty: 'Nejvýnosnější nemovitost',
+      revenueByMonth: 'Měsíční příjmy',
+      noRevenueData: 'Žádná data o příjmech',
+      revenueByProperty: 'Příjmy podle objektu',
+      paymentStatuses: 'Stavy plateb',
+      fetchError: 'Chyba načítání dat',
+      loadError: 'Chyba načítání dat',
+      pieces: 'ks.',
+      status: {
+        paid: 'Zaplaceno',
+        pending: 'Čeká',
+        overdue: 'Po splatnosti',
+        pendingConfirmation: 'Čeká na potvrzení',
+        rejected: 'Zamítnuto',
+        cancelled: 'Zrušeno',
+      },
+    },
   },
 }
