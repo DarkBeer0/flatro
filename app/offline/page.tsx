@@ -1,6 +1,4 @@
-// app/offline/page.tsx
-// Flatro — Offline fallback page for PWA
-// Shown when the user is offline and the requested page isn't cached
+'use client'
 
 export default function OfflinePage() {
   return (
