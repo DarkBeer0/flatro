@@ -1,30 +1,37 @@
 // app/offline/page.tsx
-// Flatro — Offline fallback page (shown when no network & no cache)
-
-'use client'
-
-import { WifiOff, RefreshCw } from 'lucide-react'
+// Flatro — Offline fallback page for PWA
+// Shown when the user is offline and the requested page isn't cached
 
 export default function OfflinePage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="text-center max-w-md">
-        <div className="mx-auto w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-6">
-          <WifiOff className="h-8 w-8 text-blue-600" />
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="text-center max-w-sm">
+        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-gray-100 flex items-center justify-center">
+          <svg
+            className="w-8 h-8 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M18.364 5.636a9 9 0 11-12.728 0M12 9v4m0 4h.01"
+            />
+          </svg>
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-3">
-          Brak połączenia z internetem
+        <h1 className="text-xl font-semibold text-gray-900 mb-2">
+          Brak połączenia
         </h1>
-        <p className="text-gray-500 mb-6">
-          Sprawdź połączenie sieciowe i spróbuj ponownie.
-          Niektóre strony mogą być dostępne w trybie offline.
+        <p className="text-sm text-gray-500 mb-6">
+          Sprawdź połączenie z internetem i spróbuj ponownie.
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
         >
-          <RefreshCw className="h-4 w-4" />
-          Odśwież stronę
+          Spróbuj ponownie
         </button>
       </div>
     </div>
