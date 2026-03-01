@@ -1,6 +1,6 @@
 // components/settings/notifications-tab.tsx
 // Flatro — Вкладка "Уведомления" в Настройках
-// Заменяет заглушку "Функционал в разработке"
+// V11: Добавлена секция Push-уведомлений
 
 'use client'
 
@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { Bell, BellOff, Loader2, Check, RefreshCw, Mail } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import PushSettings from '@/components/pwa/push-settings'
 
 interface NotificationSettings {
   emailPaymentReminders: boolean
@@ -133,10 +134,10 @@ export default function NotificationsTab() {
           setLogs(logsData.logs ?? [])
         }
       } else {
-        setTestResult(`❌ Błąd: ${data.error}`)
+        setTestResult(`❌ Błąd: ${data.error || 'Nieznany błąd'}`)
       }
-    } catch (e) {
-      setTestResult('❌ Błąd połączenia')
+    } catch {
+      setTestResult('❌ Nie udało się wysłać')
     } finally {
       setTestLoading(false)
     }
@@ -144,172 +145,158 @@ export default function NotificationsTab() {
 
   if (loading) {
     return (
-      <Card className="p-6 flex items-center justify-center py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-      </Card>
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+      </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* ── Настройки ── */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* PUSH NOTIFICATIONS (V11: new section)                  */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      <PushSettings />
+
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* EMAIL NOTIFICATIONS                                    */}
+      {/* ═══════════════════════════════════════════════════════ */}
       <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-1">Powiadomienia email</h2>
-        <p className="text-sm text-gray-500 mb-6">
-          Skonfiguruj, jakie powiadomienia chcesz otrzymywać
-        </p>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+            <Mail className="h-5 w-5 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Powiadomienia e-mail</h3>
+            <p className="text-xs text-gray-500">Wybierz, które e-maile chcesz otrzymywać</p>
+          </div>
+        </div>
 
         <div className="space-y-4">
-          <ToggleRow
-            icon={<Bell className="h-4 w-4 text-blue-500" />}
-            label="Przypomnienia o płatnościach"
-            description="Powiadomienie 3 dni przed terminem i przy opóźnieniu"
-            enabled={settings.emailPaymentReminders}
-            onToggle={() => handleToggle('emailPaymentReminders')}
-          />
+          {/* Payment reminders */}
+          <label className="flex items-center justify-between cursor-pointer group">
+            <div>
+              <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                Przypomnienia o płatnościach
+              </p>
+              <p className="text-xs text-gray-400">
+                Zbliżające się terminy i zaległe płatności
+              </p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={settings.emailPaymentReminders}
+                onChange={() => handleToggle('emailPaymentReminders')}
+              />
+              <div className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors" />
+              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+            </div>
+          </label>
 
-          <ToggleRow
-            icon={<Bell className="h-4 w-4 text-orange-500" />}
-            label="Wygasające umowy"
-            description="Powiadomienie gdy umowa wygasa w ciągu 30 dni"
-            enabled={settings.emailContractExpiry}
-            onToggle={() => handleToggle('emailContractExpiry')}
-          />
+          {/* Contract expiry */}
+          <label className="flex items-center justify-between cursor-pointer group">
+            <div>
+              <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                Wygaśnięcie umowy
+              </p>
+              <p className="text-xs text-gray-400">
+                Umowy wygasające w ciągu 30 dni
+              </p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={settings.emailContractExpiry}
+                onChange={() => handleToggle('emailContractExpiry')}
+              />
+              <div className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors" />
+              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+            </div>
+          </label>
 
-          <ToggleRow
-            icon={<Bell className="h-4 w-4 text-green-500" />}
-            label="Nowi najemcy"
-            description="Powiadomienie po dołączeniu nowego najemcy"
-            enabled={settings.emailNewTenant}
-            onToggle={() => handleToggle('emailNewTenant')}
-          />
+          {/* New tenant */}
+          <label className="flex items-center justify-between cursor-pointer group">
+            <div>
+              <p className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
+                Nowy najemca
+              </p>
+              <p className="text-xs text-gray-400">
+                Gdy najemca przyjmie zaproszenie
+              </p>
+            </div>
+            <div className="relative">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={settings.emailNewTenant}
+                onChange={() => handleToggle('emailNewTenant')}
+              />
+              <div className="w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-300 transition-colors" />
+              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow peer-checked:translate-x-5 transition-transform" />
+            </div>
+          </label>
         </div>
 
+        {/* Save + Test buttons */}
         <div className="flex items-center gap-3 mt-6 pt-4 border-t">
-          <Button onClick={handleSave} disabled={saving}>
-            {saving && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-            Zapisz ustawienia
+          <Button onClick={handleSave} disabled={saving} size="sm">
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : saved ? (
+              <Check className="h-4 w-4 mr-1.5 text-green-500" />
+            ) : null}
+            {saved ? 'Zapisano' : 'Zapisz ustawienia'}
           </Button>
-          {saved && (
-            <span className="text-green-600 text-sm flex items-center gap-1">
-              <Check className="h-4 w-4" /> Zapisano
-            </span>
-          )}
+          <Button variant="outline" size="sm" onClick={handleTestSend} disabled={testLoading}>
+            {testLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin mr-1.5" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Uruchom sprawdzenie
+          </Button>
         </div>
-      </Card>
-
-      {/* ── Ручной запуск ── */}
-      <Card className="p-6">
-        <h2 className="text-base font-semibold mb-1">Testowe uruchomienie</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          Uruchom sprawdzanie i wysyłkę powiadomień ręcznie (działa też automatycznie codziennie o 08:00)
-        </p>
-
-        <Button
-          variant="outline"
-          onClick={handleTestSend}
-          disabled={testLoading}
-          className="flex items-center gap-2"
-        >
-          {testLoading
-            ? <Loader2 className="h-4 w-4 animate-spin" />
-            : <RefreshCw className="h-4 w-4" />
-          }
-          Uruchom teraz
-        </Button>
 
         {testResult && (
-          <p className="mt-3 text-sm text-gray-700">{testResult}</p>
+          <p className="text-sm mt-3 text-gray-600">{testResult}</p>
         )}
       </Card>
 
-      {/* ── История уведомлений ── */}
-      <Card className="p-6">
-        <h2 className="text-base font-semibold mb-1">Historia powiadomień</h2>
-        <p className="text-sm text-gray-500 mb-4">Ostatnie 20 wysłanych powiadomień</p>
-
-        {logs.length === 0 ? (
-          <div className="py-8 text-center text-gray-400">
-            <Mail className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            <p className="text-sm">Brak historii powiadomień</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* NOTIFICATION LOG                                       */}
+      {/* ═══════════════════════════════════════════════════════ */}
+      {logs.length > 0 && (
+        <Card className="p-6">
+          <h3 className="font-semibold text-gray-900 mb-3">Historia powiadomień</h3>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto">
             {logs.map(log => (
-              <div
-                key={log.id}
-                className="flex items-start justify-between p-3 rounded-lg bg-gray-50 gap-3"
-              >
+              <div key={log.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-gray-50">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">
-                    {TYPE_LABELS[log.type] ?? log.type}
+                    {log.subject}
                   </p>
-                  <p className="text-xs text-gray-500 truncate mt-0.5">{log.subject}</p>
-                  {log.errorMsg && (
-                    <p className="text-xs text-red-500 mt-0.5">{log.errorMsg}</p>
-                  )}
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {TYPE_LABELS[log.type] || log.type} • {log.recipient}
+                  </p>
                 </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[log.status] ?? ''}`}>
-                    {STATUS_LABELS[log.status] ?? log.status}
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[log.status] || 'bg-gray-100 text-gray-500'}`}>
+                    {STATUS_LABELS[log.status] || log.status}
                   </span>
-                  <span className="text-xs text-gray-400">
-                    {new Date(log.sentAt ?? log.createdAt).toLocaleDateString('pl-PL', {
-                      day: '2-digit', month: '2-digit', year: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(log.sentAt || log.createdAt).toLocaleDateString('pl-PL', {
+                      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
                     })}
                   </span>
                 </div>
               </div>
             ))}
           </div>
-        )}
-      </Card>
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────
-// Subcomponent: переключатель уведомления
-// ─────────────────────────────────────────────────────────
-
-function ToggleRow({
-  icon,
-  label,
-  description,
-  enabled,
-  onToggle,
-}: {
-  icon: React.ReactNode
-  label: string
-  description: string
-  enabled: boolean
-  onToggle: () => void
-}) {
-  return (
-    <div className="flex items-center justify-between p-4 rounded-lg border border-gray-100 hover:border-gray-200 transition-colors">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5">{icon}</div>
-        <div>
-          <p className="text-sm font-medium text-gray-800">{label}</p>
-          <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-        </div>
-      </div>
-
-      <button
-        onClick={onToggle}
-        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none ${
-          enabled ? 'bg-gray-900' : 'bg-gray-200'
-        }`}
-        role="switch"
-        aria-checked={enabled}
-      >
-        <span
-          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-            enabled ? 'translate-x-5' : 'translate-x-0'
-          }`}
-        />
-      </button>
+        </Card>
+      )}
     </div>
   )
 }
