@@ -58,7 +58,12 @@ export function PushRegistration() {
 
     const registerPush = async () => {
       try {
-        const registration = await navigator.serviceWorker.ready
+        const registration = await Promise.race([
+          navigator.serviceWorker.ready,
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('SW timeout')), 5000)
+          ),
+        ])
 
         // Check for existing subscription
         let subscription = await registration.pushManager.getSubscription()

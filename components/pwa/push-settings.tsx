@@ -91,11 +91,23 @@ export default function PushSettings() {
         setPermission(Notification.permission)
       }
 
-      // Get current SW subscription
+      // Get current SW subscription (with timeout — .ready hangs if SW is not registered)
       if (supported) {
-        const reg = await navigator.serviceWorker.ready
-        const sub = await reg.pushManager.getSubscription()
-        setCurrentSub(sub)
+        try {
+          const reg = await Promise.race([
+            navigator.serviceWorker.ready,
+            new Promise<null>((_, reject) =>
+              setTimeout(() => reject(new Error('SW timeout')), 3000)
+            ),
+          ])
+          if (reg) {
+            const sub = await (reg as ServiceWorkerRegistration).pushManager.getSubscription()
+            setCurrentSub(sub)
+          }
+        } catch {
+          // SW not registered or timed out — push not available
+          console.warn('[PushSettings] Service Worker not ready')
+        }
       }
 
       // Get all user devices from server
@@ -130,8 +142,13 @@ export default function PushSettings() {
         return
       }
 
-      // Get SW registration
-      const registration = await navigator.serviceWorker.ready
+      // Get SW registration (with timeout)
+      const registration = await Promise.race([
+        navigator.serviceWorker.ready,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('SW not ready')), 5000)
+        ),
+      ])
 
       // Subscribe to push
       const subscription = await registration.pushManager.subscribe({
